@@ -199,6 +199,10 @@ yt-dlp is asked for YouTube's format 140 first, which is AAC at 128k, then for t
 anything else has (SoundCloud and Mixcloud usually have it), then for the best audio of any
 kind.
 
+SoundCloud's and Mixcloud's AAC comes as HLS: the track in hundreds of short segments. yt-dlp
+fetches them 8 at a time (`--concurrent-fragments 8`); one after another, a long set could run
+past the 30-minute download limit. A single file, as YouTube's is, isn't affected.
+
 Then ffmpeg makes the `.m4a`. AAC (and ALAC) is copied as it is, which is nearly everything
 from YouTube, SoundCloud, and Mixcloud. Anything else (MP3 from Bandcamp, Opus, Vorbis, FLAC
 from archive.org) is re-encoded to AAC at 256k, because Sonos won't play Opus or Vorbis in an
