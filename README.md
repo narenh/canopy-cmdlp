@@ -195,18 +195,20 @@ it can be well off. Poll about once a second; it's never saved to disk.
 
 ### The audio
 
-yt-dlp is asked for YouTube's format 140 first, which is AAC at 128k, then for the best AAC
-anything else has (SoundCloud and Mixcloud usually have it), then for the best audio of any
-kind.
+yt-dlp is asked for YouTube's format 251 first, its best audio (Opus at about 130–160k), then
+140 (AAC at 128k), then for the best AAC anything else has (SoundCloud and Mixcloud usually
+have it; their Opus is often a 64k stream), then for the best audio of any kind. Opus has to be
+re-encoded to play on Sonos, but most tracks are re-encoded for their loudness anyway
+(Loudness, below), so it's worth starting from YouTube's best.
 
 SoundCloud's and Mixcloud's AAC comes as HLS: the track in hundreds of short segments. yt-dlp
 fetches them 8 at a time (`--concurrent-fragments 8`); one after another, a long set could run
 past the 30-minute download limit. A single file, as YouTube's is, isn't affected.
 
-Then ffmpeg makes the `.m4a`. AAC (and ALAC) is copied as it is, which is nearly everything
-from YouTube, SoundCloud, and Mixcloud. Anything else (MP3 from Bandcamp, Opus, Vorbis, FLAC
-from archive.org) is re-encoded to AAC at 256k, because Sonos won't play Opus or Vorbis in an
-MP4. Either way the file's index goes at the front (`+faststart`), so playback starts before
+Then ffmpeg makes the `.m4a`. AAC (and ALAC) already near the loudness target is copied as it
+is, which is most of SoundCloud and Mixcloud. Anything else (YouTube's Opus, MP3 from Bandcamp,
+Vorbis, FLAC from archive.org) is re-encoded to AAC at 256k, because Sonos won't play Opus or
+Vorbis in an MP4. Either way the file's index goes at the front (`+faststart`), so playback starts before
 the whole file has arrived. The track says which happened (`codec`, `transcoded`).
 
 ### Loudness
