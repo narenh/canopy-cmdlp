@@ -2,6 +2,7 @@
   "name": "canopy-cmdlp",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Canopy Music's link lookups: a guest pastes a YouTube, SoundCloud, Bandcamp, Mixcloud, or archive.org link, and this fetches its audio for the party",
   "main": "server.js",
   "scripts": {

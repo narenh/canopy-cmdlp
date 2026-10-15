@@ -20,8 +20,8 @@ info:
     kept until its zone is deleted, or for 24 hours from when its link
     was resolved, whichever comes first.
   license:
-    name: Private
-    identifier: LicenseRef-Proprietary
+    name: MIT
+    identifier: MIT
 servers:
   - url: https://cmdlp.canopysf.com
     description: Production
