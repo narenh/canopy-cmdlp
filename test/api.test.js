@@ -203,11 +203,26 @@ test('a downloading track says how far along it is', async () => {
     else await new Promise((r) => setTimeout(r, 100));
   }
   assert.ok(seen, 'never saw a partial percentage');
+  // One figure for the whole: the download is its first half.
+  assert.ok(seen.progress.percent <= 50, `${seen.progress.percent}`);
   assert.equal(seen.progress.totalBytes, 6000);
   assert.equal(seen.service, 'SoundCloud');
   const ready = await waitFor(s, t.id, 'ready');
   assert.equal(ready.progress, undefined);
   assert.equal(ready.stage, undefined);
+});
+
+test('one percentage across downloading and converting, never going back', async () => {
+  const t = await (await post(s, { url: 'https://soundcloud.com/b/slow', zone: 'progress' })).json();
+  const percents = [];
+  for (let i = 0; i < 100; i++) {
+    const now = await (await fetch(`${s.base}/tracks/${t.id}`, { headers: auth })).json();
+    if (now.status === 'ready') break;
+    if (now.progress && now.progress.percent != null) percents.push(now.progress.percent);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.ok(percents.length > 0);
+  assert.ok(percents.every((p, i) => p >= 0 && p <= 100 && (i === 0 || p >= percents[i - 1])), JSON.stringify(percents));
 });
 
 test('a stream with no total shows bytes but no percentage', async () => {

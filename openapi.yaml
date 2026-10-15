@@ -603,9 +603,9 @@ components:
     Progress:
       type: object
       description: |
-        The stage's own progress: the download's while `stage` is
-        `downloading`, then the conversion's while it's `converting`
-        (`percent` and `eta` only; the rest null).
+        `percent` and `eta` are for the whole of it, downloading and
+        converting together (the download is the first half): one figure,
+        never going down. The byte counts are the download's.
       required: [percent, downloadedBytes, totalBytes, totalBytesEstimate, speed, eta]
       properties:
         percent:
@@ -613,16 +613,17 @@ components:
           minimum: 0
           maximum: 100
           description: |
-            From the exact size when the site gives one, or else from how
-            many of the stream's pieces are in (HLS). null when neither is
-            known: show progress without a percentage, not one made from
-            `totalBytesEstimate`.
+            How far along the whole is: the download (from the exact size
+            when the site gives one, or else from how many of the stream's
+            pieces are in) is 0–50, converting 50–100. null while the
+            download's share isn't known: show progress without a
+            percentage, not one made from `totalBytesEstimate`.
           example: 42.5
         downloadedBytes: { type: [integer, 'null'], example: 1835008 }
         totalBytes: { type: [integer, 'null'], description: The exact size, when the site says. }
         totalBytesEstimate: { type: [number, 'null'], description: "yt-dlp's guess at the size, for streams in pieces. Can be well off." }
         speed: { type: [number, 'null'], description: Bytes per second. }
-        eta: { type: [number, 'null'], description: Seconds left, when yt-dlp can tell. }
+        eta: { type: [number, 'null'], description: "Seconds left for the whole (downloading and converting), from the rate so far. null at first." }
 
     ApiToken:
       type: object
