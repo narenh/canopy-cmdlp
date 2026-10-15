@@ -50,8 +50,10 @@ if (args.includes('-J')) {
     duration: 2,
     extractor_key: 'Soundcloud',
     webpage_url: url,
-    thumbnail: 'https://example.com/a.webp',
-    thumbnails: [{ url: 'https://example.com/a.jpg' }, { url: 'https://example.com/a.webp' }],
+    // .invalid never resolves, so checking the artwork never leaves the
+    // machine (and fails, leaving the best JPEG listed).
+    thumbnail: 'https://art.invalid/a.webp',
+    thumbnails: [{ url: 'https://art.invalid/a.jpg' }, { url: 'https://art.invalid/a.webp' }],
   }));
   process.exit(0);
 }

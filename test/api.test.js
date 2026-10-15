@@ -73,7 +73,7 @@ test('a link resolves, downloads, and plays with Range', async () => {
   assert.equal(t.status, 'pending');
   assert.equal(t.title.startsWith('Track '), true);
   assert.equal(t.artist, 'Someone');
-  assert.equal(t.artwork, 'https://example.com/a.jpg');
+  assert.equal(t.artwork, 'https://art.invalid/a.jpg');
   assert.match(t.audioUrl, /^https:\/\/cmdlp\.example\/audio\/[\w-]{22}\.m4a\?sig=/);
 
   const ready = await waitFor(s, t.id, 'ready');
@@ -194,4 +194,47 @@ test('a stream with no total shows bytes but no percentage', async () => {
   assert.equal(seen.progress.percent, null);
   assert.equal(seen.progress.totalBytes, null);
   await waitFor(s, t.id, 'ready');
+});
+
+test('artwork: the best thumbnail that really exists', async () => {
+  const { pickArtwork, artworkCandidates } = require('../lib/tracks');
+  const yt = (id, names) => ({
+    extractor_key: 'Youtube',
+    id,
+    // yt-dlp's order: worst first.
+    thumbnails: names.map((n) => ({ url: `https://i.ytimg.com/vi/${id}/${n}` })),
+  });
+  const LIST = ['default.jpg', 'mqdefault.jpg', 'hqdefault.jpg', 'hqdefault.jpg?sqp=abc', 'sddefault.jpg', 'hq720.jpg', 'maxresdefault.jpg', 'maxresdefault.webp'];
+  // A fake fetch: these exist, as JPEGs; everything else is a 404.
+  const stub = (existing, seen = []) => async (url) => {
+    seen.push(url);
+    const ok = existing.some((e) => url.endsWith(e));
+    return { status: ok ? 206 : 404, headers: new Headers({ 'content-type': 'image/jpeg' }) };
+  };
+
+  // Best first, down to hqdefault (the floor), no WebP, no resized copies.
+  assert.deepEqual(artworkCandidates(yt('old', LIST)).map((u) => u.split('/').pop()),
+    ['maxresdefault.jpg', 'hq720.jpg', 'sddefault.jpg', 'hqdefault.jpg']);
+
+  // An old upload with nothing above hqdefault (VoAfb3f04mo).
+  assert.equal(await pickArtwork(yt('old', LIST), stub(['hqdefault.jpg'])), 'https://i.ytimg.com/vi/old/hqdefault.jpg');
+  // A new one has them all, and gets the biggest.
+  assert.equal(await pickArtwork(yt('new', LIST), stub(LIST)), 'https://i.ytimg.com/vi/new/maxresdefault.jpg');
+  // Something that answers 200 but isn't an image doesn't count.
+  const html = async (url) => ({ status: 200, headers: new Headers({ 'content-type': url.includes('maxres') ? 'text/html' : 'image/jpeg' }) });
+  assert.equal(await pickArtwork(yt('x', LIST), html), 'https://i.ytimg.com/vi/x/hq720.jpg');
+  // Nothing answers (YouTube unreachable): hqdefault, which always exists.
+  const down = async () => { throw new Error('offline'); };
+  assert.equal(await pickArtwork(yt('x', LIST), down), 'https://i.ytimg.com/vi/x/hqdefault.jpg');
+
+  // Elsewhere, with nothing confirmed, what yt-dlp listed as best.
+  const sc = { extractor_key: 'Soundcloud', id: '1', thumbnails: [{ url: 'https://i1.sndcdn.com/a-t500x500.jpg' }, { url: 'https://i1.sndcdn.com/a-original.jpg' }] };
+  assert.equal(await pickArtwork(sc, down), 'https://i1.sndcdn.com/a-original.jpg');
+  assert.equal(await pickArtwork(sc, stub(['t500x500.jpg'])), 'https://i1.sndcdn.com/a-t500x500.jpg');
+
+  // Never fetched: plain http, or an address instead of a name.
+  const seen = [];
+  const odd = { extractor_key: 'Bandcamp', id: '1', thumbnails: [{ url: 'http://f4.bcbits.com/a.jpg' }, { url: 'https://169.254.169.254/a.jpg' }] };
+  await pickArtwork(odd, stub(['a.jpg'], seen));
+  assert.deepEqual(seen, []);
 });

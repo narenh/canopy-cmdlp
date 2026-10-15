@@ -86,7 +86,12 @@ start again.
 about it. The title is the song's name where the site has one (YouTube Music does), or else
 the upload's title. The artist is the artist where the site says, or else whoever uploaded
 it (for a Mixcloud set, always the uploader: the DJ). The artwork is the largest JPEG the
-site has (for archive.org, the item's own image).
+site has that really exists (for archive.org, the item's own image). yt-dlp lists YouTube's
+`maxresdefault.jpg` without checking it, and older or low-resolution uploads often don't have
+one, so the best four are asked for one byte each, all at once (three seconds at most;
+usually a tenth or two), and the best that answers with an image wins. `hqdefault.jpg`
+always exists on YouTube, so it's the floor there. If nothing answers, it's that floor, or
+elsewhere yt-dlp's best. Only https addresses with a host name are asked.
 
 A lookup takes two or three seconds. The first YouTube one after a restart or an update
 takes 20 or so: yt-dlp fetches YouTube's player code and solves its challenge with Deno, then
