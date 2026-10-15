@@ -146,7 +146,9 @@ app.get('/canopy-logo.png', (req, res) => {
 });
 
 // Fallback artwork (lib/tracks.js, pickArtwork). No token: Sonos and the
-// hubs fetch artwork with no headers.
+// hubs fetch artwork with no headers. Only the JPEGs: the SVG sources
+// beside them are for re-rendering, not for serving.
+app.use('/artwork', (req, res, next) => (/^\/[a-z0-9-]+\.jpg$/.test(req.path) ? next() : next(new HttpError(404, 'not_found', 'No such artwork.'))));
 app.use('/artwork', express.static(path.join(__dirname, 'public', 'artwork'), { maxAge: '1d', index: false }));
 
 app.use(adminRouter({ tokens, tracks, trackJson, canopy, adminEmail: env.ADMIN_EMAIL }));

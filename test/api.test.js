@@ -79,6 +79,8 @@ test('a link resolves, downloads, and plays with Range', async () => {
   const art = await fetch(`${s.base}/artwork/soundcloud.jpg`);
   assert.equal(art.status, 200);
   assert.equal(art.headers.get('content-type'), 'image/jpeg');
+  // Its SVG source is in the same folder, but isn't served.
+  assert.equal((await fetch(`${s.base}/artwork/soundcloud.svg`)).status, 404);
   assert.match(t.audioUrl, /^https:\/\/cmdlp\.example\/audio\/[\w-]{22}\.m4a\?sig=/);
 
   const ready = await waitFor(s, t.id, 'ready');
