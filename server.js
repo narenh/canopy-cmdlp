@@ -13,6 +13,7 @@ const { run } = require('./lib/run');
 const pages = require('./lib/pages');
 const adminRouter = require('./lib/admin');
 const createCanopyAccount = require('./lib/canopy-account');
+const { BASE: CANOPY_BASE, PRODUCTION } = require('./lib/domain');
 
 const env = process.env;
 const PORT = Number(env.PORT) || 3000;
@@ -90,8 +91,13 @@ function requireToken(req, res, next) {
 
 // ---- answers ----
 
+// Where this service is, for the URLs in answers (audioUrl, and artwork of
+// its own): PUBLIC_URL, or in production https://cmdlp.<CANOPY_DOMAIN>,
+// or else the address the request came to (local development).
 function baseUrl(req) {
-  return PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  if (PUBLIC_URL) return PUBLIC_URL;
+  if (PRODUCTION) return `https://cmdlp.${CANOPY_BASE}`;
+  return `${req.protocol}://${req.get('host')}`;
 }
 
 function trackJson(req, t) {
@@ -102,7 +108,8 @@ function trackJson(req, t) {
     title: t.title,
     artist: t.artist,
     duration: t.duration,
-    artwork: t.artwork,
+    // A path is artwork this service has (public/artwork/), made absolute.
+    artwork: t.artwork && t.artwork.startsWith('/') ? baseUrl(req) + t.artwork : t.artwork,
     source: t.source,
     service: serviceName(t.source),
     webpageUrl: t.webpageUrl,
@@ -137,6 +144,10 @@ app.get('/', (req, res) => {
 app.get('/canopy-logo.png', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'canopy-logo.png'), { maxAge: '1d' });
 });
+
+// Fallback artwork (lib/tracks.js, pickArtwork). No token: Sonos and the
+// hubs fetch artwork with no headers.
+app.use('/artwork', express.static(path.join(__dirname, 'public', 'artwork'), { maxAge: '1d', index: false }));
 
 app.use(adminRouter({ tokens, tracks, trackJson, canopy, adminEmail: env.ADMIN_EMAIL }));
 

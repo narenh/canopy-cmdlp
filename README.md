@@ -93,6 +93,12 @@ usually a tenth or two), and the best that answers with an image wins. `hqdefaul
 always exists on YouTube, so it's the floor there. If nothing answers, it's that floor, or
 elsewhere yt-dlp's best. Only https addresses with a host name are asked.
 
+A SoundCloud track with no art of its own shows its uploader's avatar, as on SoundCloud.
+When the uploader has none either (SoundCloud's grey default avatar), or nothing loads, it
+gets the SoundCloud logo instead: `public/artwork/soundcloud.jpg`, served from
+`/artwork/soundcloud.jpg` with no token, since Sonos and the hubs fetch artwork without one.
+The other sites have no fallback image yet.
+
 A lookup takes two or three seconds. The first YouTube one after a restart or an update
 takes 20 or so: yt-dlp fetches YouTube's player code and solves its challenge with Deno, then
 keeps the answer in `cache/`.
@@ -232,8 +238,8 @@ Build from the `Dockerfile`. It needs:
 - A volume at `/app/data`. It holds the API tokens, so without one every restart loses them,
   starts again from the stable yt-dlp, and loses the queue's audio.
 - The domain `cmdlp.canopysf.com`, on port 3000, with HTTPS from Coolify's proxy.
-  `audioUrl` is built from the address the request came to; set `PUBLIC_URL` if that's ever
-  wrong.
+  `audioUrl` (and the SoundCloud fallback artwork) start with
+  `https://cmdlp.<CANOPY_DOMAIN>`; set `PUBLIC_URL` if that's ever wrong.
 
 The image has a health check on `/health`. Once it's up, sign in at
 `https://cmdlp.canopysf.com/admin` and make a token for each hub.

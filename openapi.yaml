@@ -541,7 +541,7 @@ components:
         title: { type: [string, 'null'], description: "The song's name where the site has one (YouTube Music does), or else the upload's title.", example: Flickermood }
         artist: { type: [string, 'null'], description: The artist where the site says, or else whoever uploaded it., example: Forss }
         duration: { type: [number, 'null'], description: Seconds., example: 213.886 }
-        artwork: { type: [string, 'null'], format: uri, description: "The largest JPEG the site has that was checked and exists (for YouTube, at least hqdefault.jpg). It can still fail to load later: hide the image if it does." }
+        artwork: { type: [string, 'null'], format: uri, description: "The largest JPEG the site has that was checked and exists (for YouTube, at least hqdefault.jpg). A SoundCloud track with none gets the SoundCloud logo, served by this service at /artwork/soundcloud.jpg with no token. It can still fail to load later: hide the image if it does." }
         source: { type: [string, 'null'], description: "yt-dlp's name for the site.", examples: [Youtube, Soundcloud, Bandcamp, Mixcloud, ArchiveOrg] }
         service: { type: [string, 'null'], description: The site's name as people write it., examples: [YouTube, SoundCloud, Bandcamp, Mixcloud, archive.org] }
         stage:

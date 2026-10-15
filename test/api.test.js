@@ -73,7 +73,12 @@ test('a link resolves, downloads, and plays with Range', async () => {
   assert.equal(t.status, 'pending');
   assert.equal(t.title.startsWith('Track '), true);
   assert.equal(t.artist, 'Someone');
-  assert.equal(t.artwork, 'https://art.invalid/a.jpg');
+  // The fake's artwork (on .invalid) never loads, so a SoundCloud track
+  // gets the SoundCloud logo, served here with no token.
+  assert.equal(t.artwork, 'https://cmdlp.example/artwork/soundcloud.jpg');
+  const art = await fetch(`${s.base}/artwork/soundcloud.jpg`);
+  assert.equal(art.status, 200);
+  assert.equal(art.headers.get('content-type'), 'image/jpeg');
   assert.match(t.audioUrl, /^https:\/\/cmdlp\.example\/audio\/[\w-]{22}\.m4a\?sig=/);
 
   const ready = await waitFor(s, t.id, 'ready');
@@ -227,10 +232,20 @@ test('artwork: the best thumbnail that really exists', async () => {
   const down = async () => { throw new Error('offline'); };
   assert.equal(await pickArtwork(yt('x', LIST), down), 'https://i.ytimg.com/vi/x/hqdefault.jpg');
 
-  // Elsewhere, with nothing confirmed, what yt-dlp listed as best.
+  // SoundCloud: its logo when nothing loads, when there's nothing listed,
+  // or when all there is is the grey default avatar.
   const sc = { extractor_key: 'Soundcloud', id: '1', thumbnails: [{ url: 'https://i1.sndcdn.com/a-t500x500.jpg' }, { url: 'https://i1.sndcdn.com/a-original.jpg' }] };
-  assert.equal(await pickArtwork(sc, down), 'https://i1.sndcdn.com/a-original.jpg');
   assert.equal(await pickArtwork(sc, stub(['t500x500.jpg'])), 'https://i1.sndcdn.com/a-t500x500.jpg');
+  assert.equal(await pickArtwork(sc, down), '/artwork/soundcloud.jpg');
+  assert.equal(await pickArtwork({ extractor_key: 'Soundcloud', id: '2', thumbnails: [] }, down), '/artwork/soundcloud.jpg');
+  const noAvatar = { extractor_key: 'Soundcloud', id: '3', thumbnails: [{ url: 'https://a1.sndcdn.com/images/default_avatar_large.png' }] };
+  assert.equal(await pickArtwork(noAvatar, stub(['default_avatar_large.png'])), '/artwork/soundcloud.jpg');
+
+  // Elsewhere, with nothing confirmed, what yt-dlp listed as best; no
+  // fallback of our own.
+  const mix = { extractor_key: 'Mixcloud', id: '1', thumbnails: [{ url: 'https://thumbnailer.mixcloud.com/a.jpg' }] };
+  assert.equal(await pickArtwork(mix, down), 'https://thumbnailer.mixcloud.com/a.jpg');
+  assert.equal(await pickArtwork({ extractor_key: 'Bandcamp', id: '1', thumbnails: [] }, down), null);
 
   // Never fetched: plain http, or an address instead of a name.
   const seen = [];
