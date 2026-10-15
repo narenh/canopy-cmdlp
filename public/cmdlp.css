@@ -88,7 +88,7 @@ h2{font-size:17px;margin:0 0 10px;}
 p{margin:0 0 14px;color:var(--muted);font-size:15px;line-height:1.45;}
 p:last-child{margin-bottom:0;}
 a{color:var(--accent-text);}
-input[type="text"]{
+input[type="text"], input[type="url"]{
   width:100%;
   background:var(--field);
   color:var(--text);
@@ -165,6 +165,30 @@ button.danger{background:var(--card);color:var(--danger);border:1px solid rgba(2
   overflow-wrap:anywhere;user-select:all;
 }
 .reveal .row{display:flex;gap:10px;}
+/* Test a link: the track, its download, and a player. */
+.test-result{margin-top:12px;}
+.test-track{display:flex;gap:14px;align-items:center;margin-bottom:14px;}
+.test-track img{width:88px;height:88px;object-fit:cover;border-radius:10px;flex:0 0 auto;background:var(--field);border:1px solid var(--line);}
+.test-track .what{min-width:0;}
+.test-track .label{font-weight:700;font-size:16px;overflow-wrap:anywhere;}
+.test-track .meta{color:var(--muted);font-size:14px;margin-top:3px;}
+.service{
+  display:inline-block;font-size:12px;font-weight:700;color:var(--on-accent);
+  background:var(--accent);border-radius:6px;padding:2px 8px;margin-bottom:6px;
+}
+.bar{height:8px;border-radius:4px;background:var(--field);border:1px solid var(--line);overflow:hidden;}
+.bar > div{height:100%;width:0;background:var(--accent);transition:width .4s ease;}
+/* No total size to measure against: something moving, not a made-up
+   percentage. */
+.bar.indeterminate > div{width:30%;animation:bar-slide 1.2s ease-in-out infinite;}
+@keyframes bar-slide{0%{transform:translateX(-110%);}100%{transform:translateX(350%);}}
+@media (prefers-reduced-motion: reduce){
+  .bar.indeterminate > div{width:100%;animation:none;opacity:.45;}
+}
+#testStatus{color:var(--muted);font-size:14px;margin-top:8px;overflow-wrap:anywhere;}
+#testStatus.failed{color:var(--danger);}
+#testAudio{width:100%;margin-top:12px;}
+.clear{margin-top:16px;}
 @media (max-width: 480px){
   .tokens li{flex-direction:column;align-items:stretch;}
   .new-token{flex-direction:column;}

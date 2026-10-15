@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { YtDlp } = require('./lib/ytdlp');
-const { Tracks, HttpError, ID_RE } = require('./lib/tracks');
+const { Tracks, HttpError, ID_RE, serviceName } = require('./lib/tracks');
 const { Tokens } = require('./lib/tokens');
 const { run } = require('./lib/run');
 const pages = require('./lib/pages');
@@ -104,11 +104,13 @@ function trackJson(req, t) {
     duration: t.duration,
     artwork: t.artwork,
     source: t.source,
+    service: serviceName(t.source),
     webpageUrl: t.webpageUrl,
     url: t.url,
     audioUrl: `${baseUrl(req)}/audio/${t.id}.m4a?sig=${audioSig(t.id)}`,
     createdAt: t.createdAt,
   };
+  if (t.status === 'pending') Object.assign(out, { stage: t.stage || 'queued', progress: t.progress || null });
   if (t.status === 'ready') Object.assign(out, { readyAt: t.readyAt, size: t.size, codec: t.codec, transcoded: t.transcoded });
   if (t.status === 'failed') out.error = t.error;
   return out;
@@ -136,7 +138,7 @@ app.get('/canopy-logo.png', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'canopy-logo.png'), { maxAge: '1d' });
 });
 
-app.use(adminRouter({ tokens, canopy, adminEmail: env.ADMIN_EMAIL }));
+app.use(adminRouter({ tokens, tracks, trackJson, canopy, adminEmail: env.ADMIN_EMAIL }));
 
 app.get('/health', async (req, res) => {
   res.set('Cache-Control', 'no-store').json({

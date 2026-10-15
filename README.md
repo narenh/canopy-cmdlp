@@ -31,7 +31,7 @@ Music app is the app's job, in the CanopyMusic repo.
 | | |
 |---|---|
 | `POST /resolve` `{url, zone}` | Looks the link up and starts the download. Answers with the track: `id`, `status`, `title`, `artist`, `duration`, `artwork`, and `audioUrl`. |
-| `GET /tracks/{id}` | The same, with `status` now `pending`, `ready`, or `failed` (and why). |
+| `GET /tracks/{id}` | The same, with `status` now `pending`, `ready`, or `failed` (and why), and while it's pending, how far the download has got (`stage` and `progress`). |
 | `GET /audio/{id}` | The audio. Answers `Range` requests, so players can seek. |
 | `DELETE /zones/{zone}` | Stops the zone's downloads and deletes its audio. |
 | `GET /health` | Up, and which yt-dlp versions it has and how the last update went. |
@@ -93,6 +93,21 @@ takes 20 or so: yt-dlp fetches YouTube's player code and solves its challenge wi
 keeps the answer in `cache/`.
 
 Then the download starts, reusing what `-J` found, so YouTube is only asked once.
+
+### Download progress
+
+While a track is `pending`, `GET /tracks/{id}` says where it's up to. `stage` is `queued`
+(waiting for one of the two download slots), `downloading`, or `converting` (making the
+`.m4a`, a few seconds). While it downloads, `progress` has the bytes so far, the speed, the
+time left when yt-dlp can tell, and `percent`.
+
+It comes from yt-dlp itself: it's run with `--progress --newline --progress-template`, which
+prints one line per update on stdout (`lib/tracks.js`, `PROGRESS_TEMPLATE`), and each line
+updates the track as it arrives. `percent` comes from the exact size when the site gives one
+(YouTube does), or else from how many of the stream's pieces are in (SoundCloud's HLS). When
+neither is known it's `null`: show progress without a percentage. yt-dlp's own estimate of
+the size (`totalBytesEstimate`) is passed along but never turned into a percentage, because
+it can be well off. Poll about once a second; it's never saved to disk.
 
 ### The audio
 
@@ -160,7 +175,16 @@ with the Canopy Account whose email is `ADMIN_EMAIL`.
 - **Signed out**, `/admin` sends you to Canopy Accounts to sign in and brings you back. **A
   quick account** (email not confirmed) isn't let in; the page links to confirming it.
   Anyone else signed in gets a plain "Not allowed", with a way to sign in as someone else.
-- **The Origin check.** The page's changes (`POST` and `DELETE` on `/admin/api/tokens`) are
+- **Test a link.** Paste a link to see what a hub would get: which service it's from, the
+  title, artist, length, and art, then the download's progress bar (a sliding one when
+  there's no percentage), and "Ready" (with the size, and whether it was copied or
+  re-encoded) or "Failed" with the reason. A ready track gets an audio player on its
+  `audioUrl`, which seeks through Range requests. Errors (`unsupported_link`, a playlist,
+  `blocked`) show as their sentence. It uses the admin page's own endpoints
+  (`/admin/api/test`), not an API token, and its tracks go in a zone of their own,
+  `admin-test`. **Clear test files** deletes that zone, and the 24-hour sweep gets anything
+  left.
+- **The Origin check.** The page's changes (`POST` and `DELETE` on `/admin/api`) are
   made with the cookie, so they must carry an `Origin` header for a Canopy page (https on
   `canopysf.com` or a subdomain; `http://localhost` too, outside production), or get 403
   `bad_origin`, the same as the other Canopy sites (see the account service's README, "The

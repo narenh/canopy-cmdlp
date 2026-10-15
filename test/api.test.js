@@ -151,3 +151,47 @@ test('the sweep deletes tracks older than MAX_AGE_HOURS', async () => {
   await waitFor(sw, t.id, 'gone');
   assert.equal(fs.existsSync(path.join(sw.dataDir, 'zones', 'z')), false);
 });
+
+test('progress: a percentage from the size, or the pieces, or none at all', () => {
+  const { parseProgress } = require('../lib/tracks');
+  assert.equal(parseProgress('[download] 5%'), null);
+  assert.deepEqual(parseProgress('[cmdlp] downloading 1500 6000 NA 2000.5 2 NA NA'), {
+    downloadedBytes: 1500, totalBytes: 6000, totalBytesEstimate: null, speed: 2000.5, eta: 2, percent: 25,
+  });
+  // HLS: no exact total, so the pieces say how far, not the estimate.
+  assert.equal(parseProgress('[cmdlp] downloading 761 NA 16742.0 0 NA 11 22').percent, 50);
+  assert.equal(parseProgress('[cmdlp] downloading 1785 NA 99999 0 NA NA NA').percent, null);
+  assert.equal(parseProgress('[cmdlp] finished 6000 6000 NA NA NA NA NA').percent, 100);
+});
+
+test('a downloading track says how far along it is', async () => {
+  const t = await (await post(s, { url: 'https://soundcloud.com/a/slow', zone: 'progress' })).json();
+  assert.equal(t.status, 'pending');
+  assert.ok(['queued', 'downloading'].includes(t.stage));
+  let seen = null;
+  for (let i = 0; i < 60 && !seen; i++) {
+    const now = await (await fetch(`${s.base}/tracks/${t.id}`, { headers: auth })).json();
+    if (now.stage === 'downloading' && now.progress && now.progress.percent > 0 && now.progress.percent < 100) seen = now;
+    else await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.ok(seen, 'never saw a partial percentage');
+  assert.equal(seen.progress.totalBytes, 6000);
+  assert.equal(seen.service, 'SoundCloud');
+  const ready = await waitFor(s, t.id, 'ready');
+  assert.equal(ready.progress, undefined);
+  assert.equal(ready.stage, undefined);
+});
+
+test('a stream with no total shows bytes but no percentage', async () => {
+  const t = await (await post(s, { url: 'https://soundcloud.com/a/hls', zone: 'progress' })).json();
+  let seen = null;
+  for (let i = 0; i < 40 && !seen; i++) {
+    const now = await (await fetch(`${s.base}/tracks/${t.id}`, { headers: auth })).json();
+    if (now.progress && now.progress.downloadedBytes === 1785) seen = now;
+    else await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.ok(seen, 'never saw the second progress line');
+  assert.equal(seen.progress.percent, null);
+  assert.equal(seen.progress.totalBytes, null);
+  await waitFor(s, t.id, 'ready');
+});

@@ -58,6 +58,25 @@ if (args.includes('-J')) {
 
 const opus = url.endsWith('/opus');
 const out = opt('-o').replace('%(ext)s', opus ? 'webm' : 'm4a');
+
+// Progress, as the --progress-template in lib/tracks.js asks for it: a
+// "/slow" link takes three seconds, with a known size; a "/hls" one has
+// no total, only pieces.
+// Written straight to fd 1: console.log to a pipe is asynchronous on
+// macOS, and the sleeps below would hold the lines back.
+const say = (line) => fs.writeSync(1, `${line}\n`);
+if (url.endsWith('/slow')) {
+  for (let i = 1; i <= 6; i++) {
+    say(`[cmdlp] downloading ${i * 1000} 6000 NA 2000.5 ${6 - i} NA NA`);
+    execFileSync('sleep', ['0.5']);
+  }
+}
+if (url.endsWith('/hls')) {
+  say('[cmdlp] downloading 761 NA 16742.0 0 NA 0 22');
+  say('[cmdlp] downloading 1785 NA NA 0 NA NA NA');
+  execFileSync('sleep', ['1.5']);
+}
+say('[cmdlp] finished 6000 6000 NA NA NA NA NA');
 execFileSync('ffmpeg', [
   '-nostdin', '-v', 'error', '-y',
   '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2',

@@ -145,3 +145,36 @@ test('make, regenerate, and revoke a token', async () => {
   // The others are untouched.
   assert.equal(await tryToken(TOKEN), 404);
 });
+
+test('test a link: no API token, the admin-test zone, and clearing it', async () => {
+  assert.equal((await api('POST', '/test', { origin: null, body: { url: 'https://soundcloud.com/a/song' } })).status, 403);
+  assert.equal((await api('POST', '/test', { c: 'B', body: { url: 'https://soundcloud.com/a/song' } })).status, 403);
+
+  const bad = await api('POST', '/test', { body: { url: 'https://example.com/unsupported' } });
+  assert.equal(bad.status, 422);
+  assert.match((await bad.json()).error, /not from YouTube, SoundCloud/);
+
+  const t = await (await api('POST', '/test', { body: { url: 'https://soundcloud.com/a/song' } })).json();
+  assert.equal(t.zone, 'admin-test');
+  assert.equal(t.service, 'SoundCloud');
+  let now = t;
+  for (let i = 0; i < 100 && now.status === 'pending'; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    now = await (await api('GET', `/test/${t.id}`)).json();
+  }
+  assert.equal(now.status, 'ready');
+  const audio = await fetch(now.audioUrl.replace('https://cmdlp.example', s.base), { headers: { Range: 'bytes=0-9' } });
+  assert.equal(audio.status, 206);
+
+  // A hub's track isn't the admin's to see here.
+  const hub = await (await fetch(`${s.base}/resolve`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+    body: JSON.stringify({ url: 'https://soundcloud.com/a/song', zone: 'party' }),
+  })).json();
+  assert.equal((await api('GET', `/test/${hub.id}`)).status, 404);
+
+  assert.deepEqual(await (await api('DELETE', '/test')).json(), { deleted: 1 });
+  assert.equal((await api('GET', `/test/${t.id}`)).status, 404);
+  assert.equal(fs.existsSync(path.join(s.dataDir, 'zones', 'admin-test')), false);
+});

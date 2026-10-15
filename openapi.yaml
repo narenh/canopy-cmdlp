@@ -372,6 +372,100 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '503': { $ref: '#/components/responses/AdminDenied' }
 
+  /admin/api/test:
+    post:
+      tags: [Admin]
+      operationId: testLink
+      summary: Test a link, as the admin
+      description: |
+        `POST /resolve`, for the admin page's "Test a link", with no API
+        token: the track goes in the `admin-test` zone. Poll
+        `GET /admin/api/test/{id}`.
+      security:
+        - canopySession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri, example: https://soundcloud.com/forss/flickermood }
+      responses:
+        '200':
+          description: The track.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400':
+          description: '`bad_url`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/AdminDenied' }
+        '403': { $ref: '#/components/responses/AdminDenied' }
+        '422':
+          description: '`unsupported_link`, `playlist`, or `live`, as for `POST /resolve`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: '`blocked` or `lookup_failed`, as for `POST /resolve`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/AdminDenied' }
+        '504':
+          description: '`timeout`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Admin]
+      operationId: clearTests
+      summary: Clear test files
+      description: Deletes the `admin-test` zone. The 24-hour sweep would anyway.
+      security:
+        - canopySession: []
+      responses:
+        '200':
+          description: Cleared.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted: { type: integer, description: How many tracks it had. }
+        '401': { $ref: '#/components/responses/AdminDenied' }
+        '403': { $ref: '#/components/responses/AdminDenied' }
+        '503': { $ref: '#/components/responses/AdminDenied' }
+
+  /admin/api/test/{id}:
+    get:
+      tags: [Admin]
+      operationId: getTest
+      summary: A tested link's track
+      security:
+        - canopySession: []
+      parameters:
+        - $ref: '#/components/parameters/TrackId'
+      responses:
+        '200':
+          description: The track, with `progress` while it downloads.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '401': { $ref: '#/components/responses/AdminDenied' }
+        '403': { $ref: '#/components/responses/AdminDenied' }
+        '404':
+          description: '`not_found`: cleared, swept, or not a test.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/AdminDenied' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -436,7 +530,7 @@ components:
 
     Track:
       type: object
-      required: [id, zone, status, title, artist, duration, artwork, source, webpageUrl, url, audioUrl, createdAt]
+      required: [id, zone, status, title, artist, duration, artwork, source, service, webpageUrl, url, audioUrl, createdAt]
       properties:
         id: { type: string, pattern: '^[A-Za-z0-9_-]{22}$' }
         zone: { $ref: '#/components/schemas/Zone' }
@@ -449,6 +543,22 @@ components:
         duration: { type: [number, 'null'], description: Seconds., example: 213.886 }
         artwork: { type: [string, 'null'], format: uri, description: The largest JPEG the site has, or else its largest image. }
         source: { type: [string, 'null'], description: "yt-dlp's name for the site.", examples: [Youtube, Soundcloud, Bandcamp, Mixcloud, ArchiveOrg] }
+        service: { type: [string, 'null'], description: The site's name as people write it., examples: [YouTube, SoundCloud, Bandcamp, Mixcloud, archive.org] }
+        stage:
+          type: string
+          enum: [queued, downloading, converting]
+          description: |
+            Only while `pending`. `queued`: waiting for a download slot (two
+            run at once). `downloading`: see `progress`. `converting`:
+            downloaded, being made into the .m4a (seconds; longer when it's
+            re-encoded).
+        progress:
+          description: |
+            Only while `pending`, and null until yt-dlp has said something.
+            Up to the moment: poll `GET /tracks/{id}` about once a second.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/Progress'
         webpageUrl: { type: [string, 'null'], format: uri, description: The track's own page. }
         url: { type: string, description: The link as it was sent. }
         audioUrl:
@@ -462,6 +572,26 @@ components:
         codec: { type: string, description: 'What the site sent (`aac`, `opus`, `mp3`...). Only when `ready`.' }
         transcoded: { type: boolean, description: "Whether it was re-encoded to AAC (false: copied as it was). Only when `ready`." }
         error: { type: string, description: Why the download failed. Only when `failed`. }
+
+    Progress:
+      type: object
+      required: [percent, downloadedBytes, totalBytes, totalBytesEstimate, speed, eta]
+      properties:
+        percent:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 100
+          description: |
+            From the exact size when the site gives one, or else from how
+            many of the stream's pieces are in (HLS). null when neither is
+            known: show progress without a percentage, not one made from
+            `totalBytesEstimate`.
+          example: 42.5
+        downloadedBytes: { type: [integer, 'null'], example: 1835008 }
+        totalBytes: { type: [integer, 'null'], description: The exact size, when the site says. }
+        totalBytesEstimate: { type: [number, 'null'], description: "yt-dlp's guess at the size, for streams in pieces. Can be well off." }
+        speed: { type: [number, 'null'], description: Bytes per second. }
+        eta: { type: [number, 'null'], description: Seconds left, when yt-dlp can tell. }
 
     ApiToken:
       type: object
