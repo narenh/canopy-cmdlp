@@ -1,0 +1,338 @@
+openapi: 3.1.0
+info:
+  title: Canopy cmdlp API
+  version: 1.0.0
+  summary: Links from YouTube, SoundCloud, Bandcamp, Mixcloud, and archive.org, as audio a Canopy Music hub can play.
+  description: |
+    The API behind `cmdlp.canopysf.com`, for the Canopy Music hubs (iPad,
+    Apple TV, and Mac). A hub sends a guest's link to `POST /resolve`,
+    shows what comes back, and plays `audioUrl` once `GET /tracks/{id}`
+    says `ready`. When the party ends, `DELETE /zones/{zone}`.
+
+    **Conventions.** JSON in and out. Times are ISO 8601 UTC strings.
+    Durations are seconds. Errors are
+    `{"error": "<a sentence>", "reason": "<snake_case>"}` with the right
+    status: branch on `reason`, show `error` if you like.
+
+    **Zones.** A zone is whatever the hub calls a party: 1 to 64 letters,
+    digits, `-`, or `_`. Each zone's audio is kept apart, and the same
+    song pasted twice in one zone is one track, downloaded once. Audio is
+    kept until its zone is deleted, or for 24 hours from when its link
+    was resolved, whichever comes first.
+  license:
+    name: Private
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: https://cmdlp.canopysf.com
+    description: Production
+  - url: http://localhost:3002
+    description: Local development
+tags:
+  - name: Tracks
+    description: Looking a link up, and its download.
+  - name: Audio
+    description: The audio itself.
+  - name: Zones
+    description: A party's cache.
+  - name: Health
+    description: Whether it's up, and which yt-dlp it's running.
+security:
+  - bearerAuth: []
+
+paths:
+  /resolve:
+    post:
+      tags: [Tracks]
+      operationId: resolve
+      summary: Look a link up and start downloading it
+      description: |
+        Answers with the track's title, artist, length, and artwork as soon
+        as yt-dlp has looked it up (a few seconds; YouTube can take 20 or
+        more), and downloads the audio in the background. Poll
+        `GET /tracks/{id}` until `status` is `ready`.
+
+        Resolving a link that's already a track in the zone answers with
+        that track, whatever its status, without downloading it again. A
+        `failed` one is tried again.
+
+        A link to a video in a playlist (`watch?v=...&list=...`) is the
+        video. A link that's only a playlist, an album, or a set is a 422
+        `playlist`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, zone]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  maxLength: 2048
+                  description: An http(s) link to one track on YouTube, SoundCloud, Bandcamp, Mixcloud, or archive.org.
+                  example: https://soundcloud.com/forss/flickermood
+                zone:
+                  $ref: '#/components/schemas/Zone'
+      responses:
+        '200':
+          description: The track, `pending` (downloading) or already `ready`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400':
+          description: |
+            `bad_url` (not an http(s) link), `bad_zone`, or `bad_json`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422':
+          description: |
+            `unsupported_link`: not from one of the five sites (this is also
+            what any other address, internal ones included, gets).
+            `playlist`: a playlist, album, or set, not one track.
+            `live`: a live stream, or one that hasn't started.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: |
+            yt-dlp couldn't look it up: `blocked` (YouTube asked to confirm
+            this isn't a bot; see the README) or `lookup_failed` (anything
+            else: a private or removed video, say). `error` is yt-dlp's own
+            message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '504':
+          description: '`timeout`: the lookup took more than 90 seconds.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /tracks/{id}:
+    get:
+      tags: [Tracks]
+      operationId: getTrack
+      summary: A track, and whether its audio is ready
+      parameters:
+        - $ref: '#/components/parameters/TrackId'
+      responses:
+        '200':
+          description: The track.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: '`not_found`: no such track, or its zone was deleted or swept.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /audio/{id}:
+    get:
+      tags: [Audio]
+      operationId: getAudio
+      summary: The audio, as an .m4a
+      description: |
+        AAC (sometimes ALAC) in an MP4 container, with its index at the
+        front, so AVPlayer and Sonos can start before it has all arrived.
+        Answers `Range` requests (206) and `HEAD`.
+
+        Use the track's `audioUrl` as it is: it carries a `sig` that opens
+        this one file, because Sonos can't send an `Authorization` header.
+        A bearer token works too. The path may end in `.m4a` or not.
+      security:
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The track's id, optionally followed by `.m4a`.
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{22}(\.m4a)?$' }
+        - name: sig
+          in: query
+          required: false
+          description: The key in the track's `audioUrl`. Needed unless there's a bearer token.
+          schema: { type: string }
+        - name: Range
+          in: header
+          required: false
+          schema: { type: string, example: bytes=0-1023 }
+      responses:
+        '200':
+          description: The whole file.
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+          content:
+            audio/mp4:
+              schema: { type: string, format: binary }
+        '206':
+          description: The part the `Range` asked for.
+          headers:
+            Content-Range: { schema: { type: string, example: bytes 0-1023/4315790 } }
+          content:
+            audio/mp4:
+              schema: { type: string, format: binary }
+        '401':
+          description: '`unauthorized`: no `sig`, a wrong one, and no bearer token.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: '`not_found`: no such track, or its zone was deleted or swept.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: '`not_ready`: still downloading.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '410':
+          description: "`failed`: the download failed; the track's `error` says why."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /zones/{zone}:
+    delete:
+      tags: [Zones]
+      operationId: deleteZone
+      summary: Delete a zone's audio, when its party ends
+      description: |
+        Stops its downloads and deletes its tracks and files. Deleting a
+        zone that has nothing is fine (`deleted: 0`). Its links can be
+        resolved again afterwards, as new tracks.
+      parameters:
+        - name: zone
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Zone' }
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [zone, deleted]
+                properties:
+                  zone: { $ref: '#/components/schemas/Zone' }
+                  deleted: { type: integer, description: How many tracks it had. }
+        '400':
+          description: '`bad_zone`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /health:
+    get:
+      tags: [Health]
+      operationId: health
+      summary: Up, and which yt-dlp
+      description: No token needed. For Coolify's health check, and for seeing whether the daily update worked.
+      security:
+        - {}
+      responses:
+        '200':
+          description: Up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, ytdlp]
+                properties:
+                  ok: { type: boolean, const: true }
+                  ytdlp:
+                    type: object
+                    properties:
+                      version: { type: [string, 'null'], description: The copy that runs (normally the latest nightly)., example: 2026.10.10.233141 }
+                      previous: { type: [string, 'null'], description: The version before the last update, tried when the current one fails., example: 2026.08.19 }
+                      stable: { type: [string, 'null'], description: The stable release in the image, tried last., example: 2026.08.19 }
+                      updating: { type: boolean }
+                      lastUpdate:
+                        type: [object, 'null']
+                        description: The last `yt-dlp --update-to nightly` since the server started.
+                        properties:
+                          at: { type: string, format: date-time }
+                          ok: { type: boolean }
+                          from: { type: [string, 'null'] }
+                          to: { type: string }
+                          error: { type: string }
+                  deno: { type: [string, 'null'], description: The JavaScript runtime yt-dlp needs for YouTube., example: 2.9.7 }
+                  tracks: { type: integer, description: Tracks in every zone. }
+                  downloading: { type: integer }
+                  queued: { type: integer }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        `Authorization: Bearer <CMDLP_TOKEN>`, the one token the Canopy
+        Music hubs share. Everything but `/health` and a signed
+        `audioUrl` needs it.
+
+  parameters:
+    TrackId:
+      name: id
+      in: path
+      required: true
+      description: The track's id, 22 characters of base64url.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{22}$' }
+      example: M9xQFZLlR5L-VkfG3YQQLp
+
+  responses:
+    Unauthorized:
+      description: '`unauthorized`: no bearer token, or the wrong one.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Zone:
+      type: string
+      pattern: '^[A-Za-z0-9_-]{1,64}$'
+      description: The party this is for, in the hub's own words.
+      example: living-room-2026-10-31
+
+    Track:
+      type: object
+      required: [id, zone, status, title, artist, duration, artwork, source, webpageUrl, url, audioUrl, createdAt]
+      properties:
+        id: { type: string, pattern: '^[A-Za-z0-9_-]{22}$' }
+        zone: { $ref: '#/components/schemas/Zone' }
+        status:
+          type: string
+          enum: [pending, ready, failed]
+          description: '`pending` while it downloads; `ready` once `audioUrl` plays; `failed` if it never will (see `error`).'
+        title: { type: [string, 'null'], description: "The song's name where the site has one (YouTube Music does), or else the upload's title.", example: Flickermood }
+        artist: { type: [string, 'null'], description: The artist where the site says, or else whoever uploaded it., example: Forss }
+        duration: { type: [number, 'null'], description: Seconds., example: 213.886 }
+        artwork: { type: [string, 'null'], format: uri, description: The largest JPEG the site has, or else its largest image. }
+        source: { type: [string, 'null'], description: "yt-dlp's name for the site.", examples: [Youtube, Soundcloud, Bandcamp, Mixcloud, ArchiveOrg] }
+        webpageUrl: { type: [string, 'null'], format: uri, description: The track's own page. }
+        url: { type: string, description: The link as it was sent. }
+        audioUrl:
+          type: string
+          format: uri
+          description: Where the audio is, with its own key (`sig`). Plays once `status` is `ready`; a 409 until then.
+          example: https://cmdlp.canopysf.com/audio/M9xQFZLlR5L-VkfG3YQQLp.m4a?sig=k82Gxp4VBgSbf1T-8yfJ14sSVFVw2qG1
+        createdAt: { type: string, format: date-time, description: When the link was resolved; the 24 hours count from here. }
+        readyAt: { type: string, format: date-time, description: Only when `ready`. }
+        size: { type: integer, description: Bytes. Only when `ready`. }
+        codec: { type: string, description: 'What the site sent (`aac`, `opus`, `mp3`...). Only when `ready`.' }
+        transcoded: { type: boolean, description: "Whether it was re-encoded to AAC (false: copied as it was). Only when `ready`." }
+        error: { type: string, description: Why the download failed. Only when `failed`. }
+
+    Error:
+      type: object
+      required: [error, reason]
+      properties:
+        error: { type: string, description: A sentence for people. }
+        reason: { type: string, description: snake_case, for code. }
