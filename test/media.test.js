@@ -43,7 +43,7 @@ test('a quiet track is turned up without clipping', async () => {
   assert.ok(m.loudness.measured < -25, `measured ${m.loudness.measured}`);
   const after = await measureLoudness(dest);
   assert.ok(Math.abs(after.i - -16) <= 1, `after ${after.i}`);
-  assert.ok(after.tp <= -1, `peak ${after.tp}`);
+  assert.ok(after.peak <= -1, `peak ${after.peak}`);
 });
 
 test('a quiet track with loud peaks is turned up under a limiter', async () => {
@@ -57,12 +57,14 @@ test('a quiet track with loud peaks is turned up under a limiter', async () => {
     '-c:a', 'aac', '-b:a', '128k', file,
   ]);
   const before = await measureLoudness(file);
-  assert.ok(before.tp > -6, `peak before ${before.tp}`);
+  assert.ok(before.peak > -6, `peak before ${before.peak}`);
   const dest = path.join(dir, 'peaky-out.m4a');
   const m = await toM4a(file, dest, { target: -16 });
   assert.strictEqual(m.loudness.adjusted, true);
   const after = await measureLoudness(dest);
-  assert.ok(after.tp <= -1, `peak after ${after.tp}`);
+  // Samples held 2 dB under -1.5, with room for the encoder's lift: the true
+  // peak between them stays under -1.5.
+  assert.ok(after.peak <= -2.5, `peak after ${after.peak}`);
 });
 
 test('a track already near the target is copied as it is', async () => {

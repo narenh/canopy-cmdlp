@@ -185,9 +185,9 @@ While a track is `pending`, `GET /tracks/{id}` says where it's up to. `stage` is
 `.m4a`, a few seconds, longer when its loudness is changed). While it downloads, `progress` has the bytes so far, the speed, the
 time left, and `percent`. `percent` and `eta` are for the whole of it, downloading and
 converting together, so an app shows one figure and needs no idea of the stages: the download
-is the first 20% and converting the rest (a YouTube download is nearly instant; converting is
-most of the wait), and the converting part moves with ffmpeg's `-progress` (measuring the
-loudness is its first 30%, encoding the rest). `percent` never goes down, even when a fallback yt-dlp starts the
+is the first 40% and converting the rest (a 10-minute YouTube video took 5.5 s to download and
+7.2 s to convert on a home server), and the converting part moves with ffmpeg's `-progress`
+(measuring the loudness is its first 10%, encoding the rest). `percent` never goes down, even when a fallback yt-dlp starts the
 download over. `eta` comes from the rate so far over the whole, not yt-dlp's estimate, which
 knows nothing of the conversion after it.
 
@@ -213,8 +213,7 @@ past the 30-minute download limit. A single file, as YouTube's is, isn't affecte
 
 Then ffmpeg makes the `.m4a`. AAC (and ALAC) already near the loudness target is copied as it
 is, which is most of SoundCloud and Mixcloud. Anything else (YouTube's Opus, MP3 from Bandcamp,
-Vorbis, FLAC from archive.org) is re-encoded to AAC at 256k (ffmpeg's `fast` coder, half the
-time of its default, which made a song wait about 12 s on a home server), because Sonos won't play Opus or
+Vorbis, FLAC from archive.org) is re-encoded to AAC at 256k, because Sonos won't play Opus or
 Vorbis in an MP4. Either way the file's index goes at the front (`+faststart`), so playback starts before
 the whole file has arrived. The track says which happened (`codec`, `transcoded`).
 
@@ -222,13 +221,17 @@ the whole file has arrived. The track says which happened (`codec`, `transcoded`
 
 A download is usually the track's master, and often far louder than the songs around it at a
 party: YouTube turns loud videos down in its own player, not in the file. So before the
-`.m4a` is made, ffmpeg measures the download's loudness and true peak (`ebur128`), and a track
-more than 1 LU from the target is brought to it: one gain for the whole track (`volume`), so its
-dynamics stay as they were, plus a limiter (`alimiter`) only when that gain would push its peaks
-past −1.5 dBTP, so a quiet track turned up doesn't clip. That means re-encoding to 256k AAC,
-which adds a little time (about 4 s for a 4-minute song on an M-series Mac; longer for an
-hour-long mix). A track already within 1 LU is left as it is, and AAC is still copied.
-`loudnorm` would do the same in two passes but works at 192 kHz, which took three times as long.
+`.m4a` is made, ffmpeg measures the download's loudness and sample peak (`ebur128`), and a
+track more than 1 LU from the target is brought to it: one gain for the whole track (`volume`),
+so its dynamics stay as they were, plus a limiter (`alimiter`) only when that gain would push
+its peaks past −1.5 dBTP, so a quiet track turned up doesn't clip. The true peak between samples
+can be about 1 dB over the sample peak, and AAC encoding lifts peaks a little more, so the
+limiter comes in 1 dB early and holds samples at −3.5 dBFS. Re-encoding to 256k AAC adds a few
+seconds (about 3 s for a 4-minute song on an M-series Mac; 7 s for a 10-minute video on the
+home server). A track already within 1 LU is left as it is, and AAC is still copied.
+`loudnorm` would do the same in two passes but works at 192 kHz, which took three times as long,
+and measuring the true peak (`peak=true`) oversamples, which took four times as long as the
+sample peak.
 
 The target is −16 LUFS, about where Apple Music plays with Sound Check, set by
 `LOUDNESS_TARGET` (`off` leaves every track as it came). It's done to the file rather than by
