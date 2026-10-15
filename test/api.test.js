@@ -212,6 +212,25 @@ test('a downloading track says how far along it is', async () => {
   assert.equal(ready.stage, undefined);
 });
 
+test('normalize: false is the audio as it came, a separate track', async () => {
+  const link = 'https://soundcloud.com/c/as-is';
+  const asIs = await (await post(s, { url: link, zone: 'loudness', normalize: false })).json();
+  assert.equal(asIs.normalize, false);
+  const ready = await waitFor(s, asIs.id, 'ready');
+  assert.equal(ready.transcoded, false);
+  assert.equal(ready.loudness, null);
+  // The same link normalized is its own track; each asks again for itself.
+  const normal = await (await post(s, { url: link, zone: 'loudness' })).json();
+  assert.equal(normal.normalize, true);
+  assert.notEqual(normal.id, asIs.id);
+  assert.equal((await (await post(s, { url: link, zone: 'loudness', normalize: false })).json()).id, asIs.id);
+  assert.equal((await (await post(s, { url: link, zone: 'loudness', normalize: true })).json()).id, normal.id);
+  const normalReady = await waitFor(s, normal.id, 'ready');
+  assert.equal(normalReady.loudness.target, -16);
+  // Not a boolean: refused.
+  assert.equal((await post(s, { url: link, zone: 'loudness', normalize: 'no' })).status, 400);
+});
+
 test('one percentage across downloading and converting, never going back', async () => {
   const t = await (await post(s, { url: 'https://soundcloud.com/b/slow', zone: 'progress' })).json();
   const percents = [];

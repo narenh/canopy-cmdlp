@@ -94,6 +94,10 @@ paths:
                   example: https://soundcloud.com/forss/flickermood
                 zone:
                   $ref: '#/components/schemas/Zone'
+                normalize:
+                  type: boolean
+                  default: true
+                  description: "Whether its loudness is brought to the target (README, Loudness). false leaves the audio as it came, AAC first and copied, so it's ready sooner: a separate track from the normalized one."
       responses:
         '200':
           description: The track, `pending` (downloading) or already `ready`.
@@ -550,10 +554,11 @@ components:
 
     Track:
       type: object
-      required: [id, zone, status, title, artist, duration, artwork, source, service, webpageUrl, url, audioUrl, createdAt]
+      required: [id, zone, normalize, status, title, artist, duration, artwork, source, service, webpageUrl, url, audioUrl, createdAt]
       properties:
         id: { type: string, pattern: '^[A-Za-z0-9_-]{22}$' }
         zone: { $ref: '#/components/schemas/Zone' }
+        normalize: { type: boolean, description: "Whether its loudness is brought to the target (what `/resolve` was asked)." }
         status:
           type: string
           enum: [pending, ready, failed]

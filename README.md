@@ -238,6 +238,11 @@ The target is −16 LUFS, about where Apple Music plays with Sound Check, set by
 the app because Sonos plays the file as it is. The track says what was measured and whether it
 was changed (`loudness`). Tracks that were ready before this stay as they were.
 
+An app can ask for a link without it (`"normalize": false` in `/resolve`): AAC first (YouTube's
+140), copied as it is with no measuring, so it's ready a few seconds sooner at the site's own
+loudness. That's a separate track from the normalized one, with its own id and aliases, so a
+zone can have both and switching back and forth never serves the other kind.
+
 ### Keeping yt-dlp working
 
 The sites change, and yt-dlp's fixes reach the nightly builds first, so:

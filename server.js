@@ -104,6 +104,7 @@ function trackJson(req, t) {
   const out = {
     id: t.id,
     zone: t.zone,
+    normalize: t.normalize !== false,
     status: t.status,
     title: t.title,
     artist: t.artist,
@@ -195,10 +196,11 @@ app.use(express.json({ limit: '16kb' }));
 
 app.post('/resolve', requireToken, async (req, res, next) => {
   try {
-    const { url, zone } = req.body || {};
+    const { url, zone, normalize } = req.body || {};
     if (typeof url !== 'string') throw new HttpError(400, 'bad_url', 'url is required.');
     if (typeof zone !== 'string') throw new HttpError(400, 'bad_zone', 'zone is required.');
-    const t = await tracks.resolve(url.trim(), zone);
+    if (normalize !== undefined && typeof normalize !== 'boolean') throw new HttpError(400, 'bad_normalize', 'normalize is true or false.');
+    const t = await tracks.resolve(url.trim(), zone, { normalize: normalize !== false });
     res.set('Cache-Control', 'no-store').json(trackJson(req, t));
   } catch (e) {
     next(e);
