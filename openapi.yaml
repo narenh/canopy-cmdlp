@@ -604,7 +604,7 @@ components:
       type: object
       description: |
         `percent` and `eta` are for the whole of it, downloading and
-        converting together (the download is the first half): one figure,
+        converting together (the download is the first 20%): one figure,
         never going down. The byte counts are the download's.
       required: [percent, downloadedBytes, totalBytes, totalBytesEstimate, speed, eta]
       properties:
@@ -615,7 +615,7 @@ components:
           description: |
             How far along the whole is: the download (from the exact size
             when the site gives one, or else from how many of the stream's
-            pieces are in) is 0–50, converting 50–100. null while the
+            pieces are in) is 0–20, converting 20–100. null while the
             download's share isn't known: show progress without a
             percentage, not one made from `totalBytesEstimate`.
           example: 42.5

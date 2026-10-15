@@ -203,8 +203,8 @@ test('a downloading track says how far along it is', async () => {
     else await new Promise((r) => setTimeout(r, 100));
   }
   assert.ok(seen, 'never saw a partial percentage');
-  // One figure for the whole: the download is its first half.
-  assert.ok(seen.progress.percent <= 50, `${seen.progress.percent}`);
+  // One figure for the whole: the download is its first 20%.
+  assert.ok(seen.progress.percent <= 20, `${seen.progress.percent}`);
   assert.equal(seen.progress.totalBytes, 6000);
   assert.equal(seen.service, 'SoundCloud');
   const ready = await waitFor(s, t.id, 'ready');

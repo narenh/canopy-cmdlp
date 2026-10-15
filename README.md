@@ -185,9 +185,9 @@ While a track is `pending`, `GET /tracks/{id}` says where it's up to. `stage` is
 `.m4a`, a few seconds, longer when its loudness is changed). While it downloads, `progress` has the bytes so far, the speed, the
 time left, and `percent`. `percent` and `eta` are for the whole of it, downloading and
 converting together, so an app shows one figure and needs no idea of the stages: the download
-is the first half and converting the second (about even, as an hour-long YouTube video took),
-and the converting half moves with ffmpeg's `-progress` (measuring the loudness is its first
-30%, encoding the rest). `percent` never goes down, even when a fallback yt-dlp starts the
+is the first 20% and converting the rest (a YouTube download is nearly instant; converting is
+most of the wait), and the converting part moves with ffmpeg's `-progress` (measuring the
+loudness is its first 30%, encoding the rest). `percent` never goes down, even when a fallback yt-dlp starts the
 download over. `eta` comes from the rate so far over the whole, not yt-dlp's estimate, which
 knows nothing of the conversion after it.
 
@@ -213,7 +213,8 @@ past the 30-minute download limit. A single file, as YouTube's is, isn't affecte
 
 Then ffmpeg makes the `.m4a`. AAC (and ALAC) already near the loudness target is copied as it
 is, which is most of SoundCloud and Mixcloud. Anything else (YouTube's Opus, MP3 from Bandcamp,
-Vorbis, FLAC from archive.org) is re-encoded to AAC at 256k, because Sonos won't play Opus or
+Vorbis, FLAC from archive.org) is re-encoded to AAC at 256k (ffmpeg's `fast` coder, half the
+time of its default, which made a song wait about 12 s on a home server), because Sonos won't play Opus or
 Vorbis in an MP4. Either way the file's index goes at the front (`+faststart`), so playback starts before
 the whole file has arrived. The track says which happened (`codec`, `transcoded`).
 
