@@ -602,6 +602,10 @@ components:
 
     Progress:
       type: object
+      description: |
+        The stage's own progress: the download's while `stage` is
+        `downloading`, then the conversion's while it's `converting`
+        (`percent` and `eta` only; the rest null).
       required: [percent, downloadedBytes, totalBytes, totalBytesEstimate, speed, eta]
       properties:
         percent:

@@ -183,9 +183,12 @@ Then the download starts, reusing what `-J` found, so YouTube is only asked once
 While a track is `pending`, `GET /tracks/{id}` says where it's up to. `stage` is `queued`
 (waiting for one of the two download slots), `downloading`, or `converting` (making the
 `.m4a`, a few seconds, longer when its loudness is changed). While it downloads, `progress` has the bytes so far, the speed, the
-time left when yt-dlp can tell, and `percent`.
+time left when yt-dlp can tell, and `percent`. While it converts, `progress` starts over for
+the conversion: its `percent` (measuring the loudness is the first 30%, encoding the rest, from
+ffmpeg's `-progress`) and `eta` from its rate so far, with the byte counts and speed null. It's
+null for a moment before ffmpeg's first update.
 
-It comes from yt-dlp itself: it's run with `--progress --newline --progress-template`, which
+The download's comes from yt-dlp itself: it's run with `--progress --newline --progress-template`, which
 prints one line per update on stdout (`lib/tracks.js`, `PROGRESS_TEMPLATE`), and each line
 updates the track as it arrives. `percent` comes from the exact size when the site gives one
 (YouTube does), or else from how many of the stream's pieces are in (SoundCloud's HLS). When

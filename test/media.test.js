@@ -75,6 +75,17 @@ test('a track already near the target is copied as it is', async () => {
   assert.strictEqual(m.transcoded, false);
 });
 
+test('progress goes from measuring through encoding, up to the end', async () => {
+  const src = tone('progress.m4a', 6);
+  const seen = [];
+  await toM4a(src, path.join(dir, 'progress-out.m4a'), { target: -16, onProgress: (f) => seen.push(f) });
+  assert.ok(seen.length >= 2, `${seen.length} updates`);
+  assert.ok(seen.every((f, i) => f >= 0 && f <= 1 && (i === 0 || f >= seen[i - 1] - 1e-9)), JSON.stringify(seen));
+  assert.ok(seen.at(-1) > 0.95, `ended at ${seen.at(-1)}`);
+  // The encoding's share starts after the measuring's.
+  assert.ok(seen.some((f) => f > 0.3));
+});
+
 test('off leaves the track alone', async () => {
   const src = tone('off.m4a', 6);
   const m = await toM4a(src, path.join(dir, 'off-out.m4a'), { target: null });
