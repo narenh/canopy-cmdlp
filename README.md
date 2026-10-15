@@ -98,9 +98,9 @@ When the uploader has none either (SoundCloud's grey default avatar), or nothing
 gets the SoundCloud logo instead: `public/artwork/soundcloud.jpg`, served from
 `/artwork/soundcloud.jpg` with no token, since Sonos and the hubs fetch artwork without one.
 It's 1500×1500, square on purpose (the Canopy Music clients round artwork themselves),
-rendered from `public/artwork/soundcloud.svg`: the cloud from
-[Wikimedia Commons' SoundCloud logo](https://upload.wikimedia.org/wikipedia/commons/7/78/Soundcloud_logo.svg),
-white, 70% of the width, centered on a gradient from #FF7700 to #FF3000. Only the JPEG is
+rendered from `public/artwork/soundcloud.svg`: SoundCloud's current 7-bar cloud, the vector
+from soundcloud.com's own web app (its media kit only has small WebPs), in white at 69% of
+the width, a little above center, on a gradient from #FF7700 to #FF3000. Only the JPEG is
 served.
 The other sites have no fallback image yet.
 
