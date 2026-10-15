@@ -55,8 +55,16 @@ test('bad input is a 400, and links that are not one track a 422', async () => {
     [{ url: 'https://soundcloud.com/a/b' }, 400, 'bad_zone'],
     [{ url: 'file:///etc/passwd', zone: 'z' }, 400, 'bad_url'],
     [{ url: 'not a link', zone: 'z' }, 400, 'bad_url'],
+    [{ url: 'https://soundcloud.com@example.com/a/b', zone: 'z' }, 400, 'bad_url'],
     [{ url: 'https://example.com/unsupported', zone: 'z' }, 422, 'unsupported_link'],
+    // Only generic would take these, and it's never on.
+    [{ url: 'https://intranet.example/feed.mp4', zone: 'z' }, 422, 'unsupported_link'],
+    [{ url: 'http://169.254.169.254/latest/meta-data/', zone: 'z' }, 422, 'unsupported_link'],
     [{ url: 'https://soundcloud.com/a/playlist', zone: 'z' }, 422, 'playlist'],
+    [{ url: 'https://vimeo.com/showcase/1/playlist', zone: 'z' }, 422, 'playlist'],
+    [{ url: 'https://vimeo.com/album/1/multi', zone: 'z' }, 422, 'playlist'],
+    [{ url: 'https://soundcloud.com/a/live', zone: 'z' }, 422, 'live'],
+    [{ url: 'https://vimeo.com/event/1/live', zone: 'z' }, 422, 'live'],
     [{ url: 'https://soundcloud.com/a/fail', zone: 'z' }, 502, 'lookup_failed'],
   ];
   for (const [body, status, reason] of cases) {
@@ -106,6 +114,16 @@ test('a link resolves, downloads, and plays with Range', async () => {
   // The same link in the same zone is the same track; in another zone, another.
   assert.equal((await (await post(s, { url: 'https://soundcloud.com/a/song', zone: 'party1' })).json()).id, t.id);
   assert.notEqual((await (await post(s, { url: 'https://soundcloud.com/a/song', zone: 'party2' })).json()).id, t.id);
+});
+
+test('a site beyond the first five resolves and downloads', async () => {
+  const r = await post(s, { url: 'https://vimeo.com/76979871', zone: 'party1' });
+  assert.equal(r.status, 200);
+  const t = await r.json();
+  assert.equal(t.source, 'Vimeo');
+  assert.equal(t.service, 'Vimeo');
+  const ready = await waitFor(s, t.id, 'ready');
+  assert.equal(ready.codec, 'aac');
 });
 
 test('audio that is not AAC is re-encoded to AAC', async () => {

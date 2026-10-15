@@ -1,8 +1,9 @@
 # Canopy cmdlp
 
 `cmdlp.canopysf.com`. A small API around [yt-dlp](https://github.com/yt-dlp/yt-dlp) that lets
-guests at a Canopy Music party queue tracks from YouTube, SoundCloud, Bandcamp, Mixcloud, and
-archive.org: rare recordings, live sets, and whatever else the music services don't carry.
+guests at a Canopy Music party queue tracks from YouTube, SoundCloud, Bandcamp, Mixcloud,
+archive.org, and most other sites yt-dlp knows: rare recordings, live sets, and whatever else
+the music services don't carry.
 
 - A guest pastes a link. The hub sends it here, and gets back the title, artist, length, and
   artwork in a few seconds.
@@ -47,7 +48,8 @@ Errors are `{"error": "<a sentence>", "reason": "<snake_case>"}`, as in canopy-e
 canopy-account-service.
 
 The same song pasted twice in a zone is one track, downloaded once, whichever form the link
-takes (`youtu.be/...`, `music.youtube.com/...`, or a video opened from a playlist). Pasted
+takes (`youtu.be/...`, `music.youtube.com/...`, a video opened from a playlist, or a
+SoundCloud short link, which is followed here since yt-dlp can't). Pasted
 again, a link the zone already has answers at once (see "Looking a link up"). A link that's
 only a playlist, an album, or a set is turned down: send one track.
 
@@ -58,10 +60,13 @@ only a playlist, an album, or a set is turned down: send one track.
   API; `lib/pages.js` the two pages (with `public/cmdlp.css` and `public/admin.js` inlined).
   `lib/canopy-account.js` asks Canopy Accounts who's signed in, and `lib/domain.js` says
   which pages count as Canopy's.
-- `lib/ytdlp.js` is yt-dlp: which copy runs, the updates, the fallbacks, and the list of
-  sites it may use.
+- `lib/ytdlp.js` is yt-dlp: which copy runs, the updates, the fallbacks, and the extractors
+  it may not use.
 - `lib/tracks.js` is the tracks: looking a link up, the download queue (two at a time), the
   zone folders, and the sweep.
+- `lib/shortlinks.js` follows short links (`on.soundcloud.com`), and `lib/safe-fetch.js` is
+  how this server asks another one for anything itself (short links, artwork checks): https,
+  public addresses only, headers only.
 - `lib/media.js` turns a download into the `.m4a`.
 - `lib/run.js` runs a program. Never through a shell: a link is passed as an argument, after
   `--`, so it can't be anything but a link.
@@ -93,7 +98,8 @@ ready. If it is, that track is the answer at once, with no yt-dlp at all:
   video is in the zone, any link to it is instant, even a form not pasted before.
 - **Any other link** is looked up among the links that led to the zone's tracks before. Each
   track keeps those (`aliases`, in its `.track.json`): the link it was first resolved from,
-  and every other link yt-dlp later said was the same track (a SoundCloud short link, say).
+  every other link yt-dlp later said was the same track (`m.soundcloud.com`, say), and every
+  short link that led to it (below).
   Links are compared without what only says who shared them: the host's case, the
   `#fragment`, a trailing slash, and tracking parameters (`si`, `is`, `feature`, `pp`, `t`,
   `utm_*`, `fbclid`, `gclid`, `igshid`, and the like) don't count. What says which track it
@@ -104,9 +110,46 @@ in memory too, read back from the `.track.json` files on start, so checking them
 file. They're per zone, like the tracks, and go with them (the zone's deletion or the sweep).
 The same song in another zone is looked up and downloaded again: zones share nothing.
 
+A link with a user name in it (`https://soundcloud.com@somewhere.example/`) is a 400
+`bad_url`.
+
+**Short links.** yt-dlp has no extractor for `on.soundcloud.com/<code>`: only generic would
+follow its redirect, and generic is never on (see "Which sites"). So this server follows it
+first, for the hosts on `SHORTENERS` in `lib/shortlinks.js` (only `on.soundcloud.com` so far),
+each with the hosts it may lead to (`soundcloud.com`, `www.soundcloud.com`, and
+`m.soundcloud.com`):
+
+- Each hop is a HEAD. When HEAD isn't answered properly (anything but a redirect, a 2xx, or a
+  404 or 410: a 405, say), it's asked again with a GET, whose body is never read.
+- https only: a pasted `http://` short link is asked over https, and a redirect to `http://`
+  is refused. At most 5 hops, and 5 seconds for the whole chain.
+- Each redirect must lead to another shortener on the list, or to one of the first one's
+  hosts. Anything else is refused: `on.soundcloud.com` may only lead to SoundCloud. Where it
+  leads is never asked here; that's yt-dlp's to look up, as for any pasted link.
+- Every request goes through `lib/safe-fetch.js`, which only connects to a host name (never an
+  address) whose addresses are all public. A hop at a private, loopback, link-local, or
+  otherwise non-public address (10.x, 127.x, 169.254.x, `::1`, `fd00::/8`, and the rest; the
+  list is in the file) is refused before anything connects. The check is in the connection's
+  own DNS lookup, so the address checked is the address connected to: a name can't answer
+  "public" to the check and "internal" to the connection (DNS rebinding). The connected
+  address is checked again before the request goes out.
+- The link it leads to goes to yt-dlp without its tracking parameters and fragment (the same
+  ones aliases ignore, above; SoundCloud adds `si` and `utm_*`). The track keeps both links as
+  aliases, so the same short link pasted again is instant, with no request at all. If where it
+  leads is already a track in the zone, the short link is added to that track's aliases, and
+  yt-dlp isn't run.
+
+A short link that leads somewhere it may not, over http, more than 5 times, to an address
+that isn't public, or nowhere (a 404) is a 422 `unsupported_link`, with a sentence saying
+which. A shortener that can't be reached, or answers with an error, is a 502
+`lookup_failed`; one that takes more than 5 seconds is a 504 `timeout`.
+
 Otherwise, `POST /resolve` runs `yt-dlp -J` on the link, which answers with everything
-yt-dlp knows about it. If that's a track the zone already has, the link is added to its
-aliases and the track is the answer, as above. The title is the song's name where the site has one (YouTube Music does), or else
+yt-dlp knows about it. yt-dlp gets the link as Node's `URL` writes it, which always puts a `/`
+after the host: `https://a.example?.soundcloud.com/x` goes to yt-dlp as
+`https://a.example/?.soundcloud.com/x`, so an extractor's pattern can't take what's after
+the `?` (or a `#`) for the host. If yt-dlp's answer is a track the zone already has, the link
+is added to its aliases and the track is the answer, as above. The title is the song's name where the site has one (YouTube Music does), or else
 the upload's title. The artist is the artist where the site says, or else whoever uploaded
 it (for a Mixcloud set, always the uploader: the DJ). The artwork is the largest JPEG the
 site has that really exists (for archive.org, the item's own image). yt-dlp lists YouTube's
@@ -114,7 +157,9 @@ site has that really exists (for archive.org, the item's own image). yt-dlp list
 one, so the best four are asked for one byte each, all at once (three seconds at most;
 usually a tenth or two), and the best that answers with an image wins. `hqdefault.jpg`
 always exists on YouTube, so it's the floor there. If nothing answers, it's that floor, or
-elsewhere yt-dlp's best. Only https addresses with a host name are asked.
+elsewhere yt-dlp's best. Only https addresses with a host name are asked, through
+`lib/safe-fetch.js` as for short links: a thumbnail whose host resolves to a private,
+loopback, or link-local address is never fetched, whichever site it came from.
 
 A SoundCloud track with no art of its own shows its uploader's avatar, as on SoundCloud.
 When the uploader has none either (SoundCloud's grey default avatar), or nothing loads, it
@@ -169,7 +214,7 @@ The sites change, and yt-dlp's fixes reach the nightly builds first, so:
 - On start, and every 24 hours after, `yt-dlp --update-to nightly`. What was there becomes
   `bin/yt-dlp.prev`. If the new copy won't even run, the old one goes back.
 - Every lookup and download tries `bin/yt-dlp`, then `bin/yt-dlp.prev`, then the image's
-  stable copy, until one works. A link from a site that isn't allowed isn't retried.
+  stable copy, until one works. A link no extractor takes isn't retried.
 - `GET /health` shows all three versions and the last update.
 
 The standalone yt-dlp build has Python and YouTube's challenge solver (yt-dlp-ejs) inside.
@@ -177,12 +222,55 @@ The solver needs a JavaScript runtime: Deno, which the image has and yt-dlp find
 
 ### Which sites
 
-yt-dlp is told which of its extractors it may use (`--use-extractors`, `EXTRACTORS` in
-`lib/ytdlp.js`): YouTube, SoundCloud, Bandcamp, Mixcloud, and archive.org, and their playlist
-ones, which turn a video opened from a playlist into just the video. Never the **generic**
-extractor: it fetches whatever URL it's given, which would let anyone with a token make the
-server fetch internal addresses. Any link no extractor on the list takes is a 422,
-`unsupported_link`.
+Any site yt-dlp has an extractor for, but a few. yt-dlp is run with
+
+```
+--use-extractors default,-generic,-mediasite.*,-globoarticle,-ign\.com,-ignvideo,-ignarticle,-lemonde,-playtvak,-rts,-webcamerapl,-radio\.de,-senate\.gov
+```
+
+(`EXTRACTORS` in `lib/ytdlp.js`). `default` is every extractor yt-dlp has on by default, and
+each `-<name>` takes one back out (a regex, matched against the whole name, ignoring case).
+They're applied in order, and nothing after `default` adds, so nothing can bring an excluded
+one back. Whether a site then works is up to its extractor. A link no extractor takes is a
+422 `unsupported_link` (yt-dlp says "No suitable extractor found"); one whose extractor fails
+is a 502, like any other.
+
+A link that's only a playlist, an album, a set, or a page of several videos, on any site, is a
+422 `playlist` (yt-dlp's `_type` is `playlist` or `multi_video`). A live stream, or one that
+hasn't started, is a 422 `live`. A video opened from a playlist is just the video
+(`--no-playlist`).
+
+**Left out, and why.** The **generic** extractor, always: it fetches whatever URL it's given
+and looks for media in it, which would let anyone with a token make the server fetch internal
+addresses (Coolify's other services, the cloud's metadata at 169.254.169.254). `default`
+includes it, so it has to be taken out by name. The rest take links on hosts that aren't
+their site's, and fetch the link as given, so they'd do the same. They were found by trying
+every enabled extractor's own test links (yt-dlp 2026.07.04) on a made-up host and on private
+addresses, with the real host moved into another host's path, query, or fragment, and with
+another domain added to the end of the real host:
+
+| Left out | Its pattern takes |
+|---|---|
+| `mediasite.*` (Mediasite, MediasiteCatalog, MediasiteNamedCatalog) | Any host with a `/Mediasite/` path. |
+| `globoarticle`, `ign\.com`, `ignvideo`, `ignarticle`, `lemonde`, `playtvak`, `rts` | A `.+?` before the domain, which can run past a `/`: `https?://.+?\.ign\.com/` takes `https://anywhere.example/x.ign.com/...`. |
+| `webcamerapl`, `radio\.de`, `senate\.gov` | Nothing after the domain, so it can be the start of another: `x.webcamera.pl.anywhere.example`. |
+
+Some others matched those tries too, but stay: they never fetch the link's own host.
+StreetVoice, RoosterTeeth, uol.com.br, brightcove:legacy, and simplecast:podcast build their
+own API's address from the id in the link. KnownDRM, KnownPiracy, and KnownLiability only say
+the site isn't supported. The extractors whose host pattern stops at a `/` can't be fooled by
+a site's name after a `?` or `#`, because yt-dlp gets the link with a `/` after the host
+(see "Looking a link up"). And yt-dlp's embed search (`_extract_generic_embeds`), which loads
+generic even when it's left out, is only called by QuotedHTML, which only ever runs from
+inside generic.
+
+**What's still possible.** That check was of yt-dlp 2026.07.04, and the nightly adds
+extractors: one added later that takes any host would be on until it's added here (look for
+`_VALID_URL`s that don't pin the host, and try the new ones' test links on another host).
+Extractors also fetch whatever a site's own pages and APIs point to (an embed, a media
+file), and follow redirects, so a site that lets uploaders link anywhere could still lead
+yt-dlp somewhere unexpected. The backstop for both is the network: the container shouldn't be
+able to reach anything internal.
 
 ### The sweep
 
@@ -253,9 +341,11 @@ npm test
 ```
 
 The tests run a real server against a fake yt-dlp (`test/fake-yt-dlp.js`) and a fake Canopy
-Accounts, so they need ffmpeg but not the network. `test/aliases.test.js` drives the tracks
-directly, with the same fake and a stub for the artwork checks, since its YouTube links would
-otherwise check artwork on `i.ytimg.com`.
+Accounts, so they need ffmpeg but not the network. The fake picks an extractor by host and
+honors `--use-extractors` as yt-dlp does, generic included, so a test can show generic is
+never on. `test/aliases.test.js` and `test/links.test.js` drive the tracks directly, with the
+same fake and a stub fetch for the artwork checks and short links (and fake DNS for the
+guarded fetch), since their links would otherwise ask `i.ytimg.com` or `on.soundcloud.com`.
 
 ### In Coolify
 

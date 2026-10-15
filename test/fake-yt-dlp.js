@@ -2,14 +2,23 @@
 // Stands in for yt-dlp in the tests. The link says what to do:
 //   .../unsupported  "Unsupported URL", as for a site not allowed
 //   .../playlist     a playlist
+//   .../multi        a multi_video (several videos on one page)
+//   .../live         a live stream
 //   .../fail         an error
 //   .../opus         Opus audio, which has to be re-encoded
 //   .../dlfail       looks up fine, but the download fails
 //   anything else    a two-second AAC track
 // Downloads are made with ffmpeg, so they're real audio files.
 //
-// The query and fragment don't change which track a link is.
-// on.soundcloud.com/<x> is a short link to soundcloud.com/a/<x>. A YouTube
+// The host says which extractor takes the link (SITES below), and
+// --use-extractors is honored as yt-dlp does: "default" is every one of
+// them, generic included, and "-<regex>" takes names back out. A host no
+// site has goes to generic if it's still in, as with the real yt-dlp, or
+// else is "No suitable extractor found". So on.soundcloud.com (a short
+// link, which only generic would follow) and any other host are
+// unsupported unless generic is on.
+//
+// The query and fragment don't change which track a link is. A YouTube
 // link (youtu.be/<id>, watch?v=<id>, /shorts/<id>...) is the video <id>,
 // from the Youtube extractor, as with the real yt-dlp. Its artwork check
 // would ask i.ytimg.com, so use YouTube links only with a stub fetch (as
@@ -38,12 +47,49 @@ if (infoFile) url = JSON.parse(fs.readFileSync(infoFile, 'utf8')).webpage_url;
 const youtube = /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/))([A-Za-z0-9_-]{11})/.exec(url);
 const page = youtube
   ? `https://www.youtube.com/watch?v=${youtube[1]}`
-  : url.split(/[?#]/)[0].replace('://on.soundcloud.com/', '://soundcloud.com/a/');
+  : url.split(/[?#]/)[0].replace(/:\/\/(?:m|www)\.soundcloud\.com\//, '://soundcloud.com/');
 
 if (page.endsWith('/unsupported')) {
   console.error(`ERROR: Unsupported URL: ${url}`);
   process.exit(1);
 }
+
+// [host pattern, extractor name (what --use-extractors matches), its key]
+const SITES = [
+  [/^(?:www\.|m\.|music\.)?youtube\.com$|^youtu\.be$/, 'youtube', 'Youtube'],
+  [/^(?:www\.|m\.)?soundcloud\.com$/, 'soundcloud', 'Soundcloud'],
+  [/\.bandcamp\.com$/, 'bandcamp', 'Bandcamp'],
+  [/^(?:www\.)?mixcloud\.com$/, 'mixcloud', 'Mixcloud'],
+  [/^archive\.org$/, 'archive.org', 'ArchiveOrg'],
+  [/^(?:www\.)?vimeo\.com$/, 'vimeo', 'Vimeo'],
+];
+const NAMES = [...SITES.map((s) => s[1]), 'mediasite', 'generic'];
+
+// yt-dlp's orderedSet_from_options, for these names.
+function enabled() {
+  const i = args.indexOf('--use-extractors');
+  const items = i === -1 ? ['default'] : args[i + 1].split(',').map((s) => s.trim()).filter(Boolean);
+  let on = [];
+  for (let item of items) {
+    const drop = item.startsWith('-');
+    if (drop) item = item.slice(1);
+    const re = new RegExp(`^(?:${item})$`, 'i');
+    const names = item === 'default' || item === 'all' ? NAMES : NAMES.filter((n) => re.test(n));
+    on = drop ? on.filter((n) => !names.includes(n)) : [...new Set([...on, ...names])];
+  }
+  return on;
+}
+
+let host = '';
+try {
+  host = new URL(url).hostname.toLowerCase();
+} catch {}
+const site = SITES.find(([re, name]) => re.test(host) && enabled().includes(name));
+if (!site && !enabled().includes('generic')) {
+  console.error(`ERROR: No suitable extractor found for URL ${url}`);
+  process.exit(1);
+}
+const extractorKey = site ? site[2] : 'Generic';
 if (page.endsWith('/fail')) {
   console.error('ERROR: [fake] boom');
   process.exit(1);
@@ -53,7 +99,11 @@ const id = youtube ? youtube[1] : crypto.createHash('md5').update(page).digest('
 
 if (args.includes('-J')) {
   if (page.endsWith('/playlist')) {
-    console.log(JSON.stringify({ _type: 'playlist', id, title: 'A playlist', entries: [] }));
+    console.log(JSON.stringify({ _type: 'playlist', id, title: 'A playlist', extractor_key: extractorKey, entries: [] }));
+    process.exit(0);
+  }
+  if (page.endsWith('/multi')) {
+    console.log(JSON.stringify({ _type: 'multi_video', id, title: 'Several videos', extractor_key: extractorKey, entries: [] }));
     process.exit(0);
   }
   console.log(JSON.stringify({
@@ -61,7 +111,8 @@ if (args.includes('-J')) {
     title: `Track ${id}`,
     uploader: 'Someone',
     duration: 2,
-    extractor_key: youtube ? 'Youtube' : 'Soundcloud',
+    extractor_key: extractorKey,
+    ...(page.endsWith('/live') ? { is_live: true, live_status: 'is_live' } : {}),
     webpage_url: page,
     // .invalid never resolves, so checking the artwork never leaves the
     // machine (and fails, leaving the best JPEG listed).

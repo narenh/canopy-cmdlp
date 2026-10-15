@@ -2,7 +2,8 @@
 
 The README is the reference for how everything works and why; keep it in step with the code. openapi.yaml is the API, and `npm test` checks it lists exactly the routes in server.js.
 
-- Never add yt-dlp's `generic` extractor (or `default`/`all`) to `EXTRACTORS` in lib/ytdlp.js: it fetches any URL, internal addresses included.
+- yt-dlp's `generic` extractor must always be excluded (`-generic` after `default` in `EXTRACTORS`, lib/ytdlp.js): it fetches any URL, internal addresses included. Nothing after `default` may add an extractor back, and extractors that take other hosts' links are excluded too (README.md > Which sites).
+- Anything this server fetches itself (short links, artwork checks) goes through `safeFetch` (lib/safe-fetch.js): https, a host name whose addresses are all public, headers only. Short links are followed only from hosts on `SHORTENERS` (lib/shortlinks.js), and only to their own site.
 - Arguments go to yt-dlp and ffmpeg through `run()` (lib/run.js), never a shell, with `--` before a link.
 - API tokens live in DATA_DIR/tokens.json as hashes only; never log or store a token itself. `ADMIN_EMAIL` has no default in the code: unset means nobody gets into /admin.
 - The tests use test/fake-yt-dlp.js and a fake Canopy Accounts, not the network. Real links are tried by hand against the Docker image (README.md > Trying it).

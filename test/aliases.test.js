@@ -1,8 +1,8 @@
 // A link that's already a track in the zone answers at once, without
 // yt-dlp: by its YouTube video id, or by a link that led to the track
 // before. Tracks (lib/tracks.js) with the real YtDlp running the fake
-// (fake-yt-dlp.js), and a stub fetch for the artwork checks, so nothing
-// leaves the machine. Needs ffmpeg on PATH.
+// (fake-yt-dlp.js), and a stub fetch for the artwork checks and the short
+// links, so nothing leaves the machine. Needs ffmpeg on PATH.
 
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -14,8 +14,17 @@ const { Tracks, normalizeUrl, youtubeId, trackId } = require('../lib/tracks');
 
 const FAKE = path.join(__dirname, 'fake-yt-dlp.js');
 const quiet = () => {};
-// Every artwork check answers 404: the fallbacks win, and no request goes out.
-const noFetch = async () => ({ status: 404, headers: new Headers() });
+// No request goes out. on.soundcloud.com/<x> redirects to
+// soundcloud.com/a/<x>, with the tracking SoundCloud adds; everything else
+// (the artwork checks) is a 404, so the fallbacks win.
+const noFetch = async (url) => {
+  const u = new URL(url);
+  if (u.hostname === 'on.soundcloud.com') {
+    const to = `https://soundcloud.com/a${u.pathname}?si=abc&utm_source=clipboard&utm_medium=text&utm_campaign=social_sharing`;
+    return { status: 302, headers: new Headers({ location: to }) };
+  }
+  return { status: 404, headers: new Headers() };
+};
 
 const instances = [];
 const dirs = [];
@@ -141,12 +150,17 @@ test('any form of a YouTube video already resolved skips yt-dlp', async () => {
 test('a new link to a known track is learned, and skips yt-dlp after', async () => {
   const { tracks, lookups } = await make();
   const t = await tracks.resolve('https://soundcloud.com/a/aliased', 'z');
-  // A short link: yt-dlp is asked once, and it's the same track.
-  const again = await tracks.resolve('https://on.soundcloud.com/aliased?si=1', 'z');
+  // Another form of the same track: yt-dlp is asked once, and it's the
+  // same track.
+  const again = await tracks.resolve('https://m.soundcloud.com/a/aliased', 'z');
   assert.equal(again.id, t.id);
   assert.equal(lookups.length, 2);
-  assert.deepEqual(t.aliases, ['https://soundcloud.com/a/aliased', 'https://on.soundcloud.com/aliased']);
+  // A short link to it: followed, and it's known without yt-dlp.
+  assert.equal((await tracks.resolve('https://on.soundcloud.com/aliased?si=1', 'z')).id, t.id);
+  assert.equal(lookups.length, 2);
+  assert.deepEqual(t.aliases, ['https://soundcloud.com/a/aliased', 'https://m.soundcloud.com/a/aliased', 'https://on.soundcloud.com/aliased']);
   assert.equal((await tracks.resolve('https://on.soundcloud.com/aliased?si=2&utm_medium=text', 'z')).id, t.id);
+  assert.equal((await tracks.resolve('https://m.soundcloud.com/a/aliased?si=3', 'z')).id, t.id);
   assert.equal(lookups.length, 2);
   // Saved with the track.
   assert.deepEqual((await saved(tracks, t.id)).aliases, t.aliases);

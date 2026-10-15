@@ -1,6 +1,6 @@
-// canopy-cmdlp: links from YouTube, SoundCloud, Bandcamp, Mixcloud, and
-// archive.org, as audio a Canopy Music hub can play. README.md says how
-// it works; openapi.yaml is the API.
+// canopy-cmdlp: links from YouTube, SoundCloud, Bandcamp, Mixcloud,
+// archive.org, and most other sites yt-dlp knows, as audio a Canopy Music
+// hub can play. README.md says how it works; openapi.yaml is the API.
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');

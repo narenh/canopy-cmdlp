@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "license": "MIT",
-  "description": "Canopy Music's link lookups: a guest pastes a YouTube, SoundCloud, Bandcamp, Mixcloud, or archive.org link, and this fetches its audio for the party",
+  "description": "Canopy Music's link lookups: a guest pastes a YouTube, SoundCloud, Bandcamp, Mixcloud, archive.org, or other link yt-dlp knows, and this fetches its audio for the party",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

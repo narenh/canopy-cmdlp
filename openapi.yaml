@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Canopy cmdlp API
   version: 1.0.0
-  summary: Links from YouTube, SoundCloud, Bandcamp, Mixcloud, and archive.org, as audio a Canopy Music hub can play.
+  summary: Links from YouTube, SoundCloud, Bandcamp, Mixcloud, archive.org, and most other sites yt-dlp knows, as audio a Canopy Music hub can play.
   description: |
     The API behind `cmdlp.canopysf.com`, for the Canopy Music hubs (iPad,
     Apple TV, and Mac). A hub sends a guest's link to `POST /resolve`,
@@ -69,9 +69,15 @@ paths:
         the like), fragment, and trailing slash. Each zone has its own; the
         same song in another zone is looked up again.
 
+        A SoundCloud short link (`on.soundcloud.com/<code>`) is followed
+        here first, since yt-dlp can't: https only, at most 5 redirects in
+        5 seconds, only to SoundCloud, and only through public addresses.
+        Both it and where it led are remembered, so it's instant pasted
+        again.
+
         A link to a video in a playlist (`watch?v=...&list=...`) is the
-        video. A link that's only a playlist, an album, or a set is a 422
-        `playlist`.
+        video. A link that's only a playlist, an album, a set, or a page
+        of several videos, on any site, is a 422 `playlist`.
       requestBody:
         required: true
         content:
@@ -84,7 +90,7 @@ paths:
                   type: string
                   format: uri
                   maxLength: 2048
-                  description: An http(s) link to one track on YouTube, SoundCloud, Bandcamp, Mixcloud, or archive.org.
+                  description: An http(s) link to one track, on any site yt-dlp has an extractor for (but generic and a few that take other sites' links; see the README, "Which sites"), or a SoundCloud short link.
                   example: https://soundcloud.com/forss/flickermood
                 zone:
                   $ref: '#/components/schemas/Zone'
@@ -96,16 +102,21 @@ paths:
               schema: { $ref: '#/components/schemas/Track' }
         '400':
           description: |
-            `bad_url` (not an http(s) link), `bad_zone`, or `bad_json`.
+            `bad_url` (not an http(s) link, or one with a user name in
+            it), `bad_zone`, or `bad_json`.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422':
           description: |
-            `unsupported_link`: not from one of the five sites (this is also
-            what any other address, internal ones included, gets).
-            `playlist`: a playlist, album, or set, not one track.
+            `unsupported_link`: no extractor yt-dlp may use takes it (this is
+            also what any other address, internal ones included, gets: the
+            generic extractor is never on), or a short link that leads
+            somewhere other than its site, over http, through more than 5
+            redirects, to an address that isn't public, or nowhere.
+            `playlist`: a playlist, album, set, or page of several videos,
+            not one track.
             `live`: a live stream, or one that hasn't started.
           content:
             application/json:
@@ -115,12 +126,13 @@ paths:
             yt-dlp couldn't look it up: `blocked` (YouTube asked to confirm
             this isn't a bot; see the README) or `lookup_failed` (anything
             else: a private or removed video, say). `error` is yt-dlp's own
-            message.
+            message. Also `lookup_failed` when a short link's shortener
+            can't be reached or answers with an error.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '504':
-          description: '`timeout`: the lookup took more than 90 seconds.'
+          description: '`timeout`: the lookup took more than 90 seconds, or following a short link more than 5.'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -550,8 +562,8 @@ components:
         artist: { type: [string, 'null'], description: The artist where the site says, or else whoever uploaded it., example: Forss }
         duration: { type: [number, 'null'], description: Seconds., example: 213.886 }
         artwork: { type: [string, 'null'], format: uri, description: "The largest JPEG the site has that was checked and exists (for YouTube, at least hqdefault.jpg). A SoundCloud track with none gets the SoundCloud logo, served by this service at /artwork/soundcloud.jpg with no token. It can still fail to load later: hide the image if it does." }
-        source: { type: [string, 'null'], description: "yt-dlp's name for the site.", examples: [Youtube, Soundcloud, Bandcamp, Mixcloud, ArchiveOrg] }
-        service: { type: [string, 'null'], description: The site's name as people write it., examples: [YouTube, SoundCloud, Bandcamp, Mixcloud, archive.org] }
+        source: { type: [string, 'null'], description: "yt-dlp's name for the site (its extractor's key).", examples: [Youtube, Soundcloud, Bandcamp, Mixcloud, ArchiveOrg, Vimeo] }
+        service: { type: [string, 'null'], description: "The site's name as people write it, for YouTube, SoundCloud, Bandcamp, Mixcloud, and archive.org; for any other site, the same as `source`.", examples: [YouTube, SoundCloud, Bandcamp, Mixcloud, archive.org, Vimeo] }
         stage:
           type: string
           enum: [queued, downloading, converting]

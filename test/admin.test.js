@@ -60,7 +60,7 @@ test('the homepage explains it and links to the admin page', async () => {
   assert.equal(r.status, 200);
   const html = await r.text();
   assert.match(html, /Canopy Music party/);
-  assert.match(html, /YouTube, SoundCloud, Bandcamp, Mixcloud, or archive\.org/);
+  assert.match(html, /YouTube, SoundCloud, Bandcamp, Mixcloud, archive\.org, or most other sites with music on them/);
   assert.match(html, /<a class="gear" href="\/admin"/);
   assert.equal((await fetch(`${s.base}/canopy-logo.png`)).headers.get('content-type'), 'image/png');
 });
@@ -152,7 +152,7 @@ test('test a link: no API token, the admin-test zone, and clearing it', async ()
 
   const bad = await api('POST', '/test', { body: { url: 'https://example.com/unsupported' } });
   assert.equal(bad.status, 422);
-  assert.match((await bad.json()).error, /not from YouTube, SoundCloud/);
+  assert.match((await bad.json()).error, /isn't from a site yt-dlp can get a track from/);
 
   const t = await (await api('POST', '/test', { body: { url: 'https://soundcloud.com/a/song' } })).json();
   assert.equal(t.zone, 'admin-test');
