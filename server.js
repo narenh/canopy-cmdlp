@@ -3,26 +3,51 @@
 // it works; openapi.yaml is the API.
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { YtDlp } = require('./lib/ytdlp');
 const { Tracks, HttpError, ID_RE } = require('./lib/tracks');
+const { Tokens } = require('./lib/tokens');
 const { run } = require('./lib/run');
+const pages = require('./lib/pages');
+const adminRouter = require('./lib/admin');
+const createCanopyAccount = require('./lib/canopy-account');
 
 const env = process.env;
 const PORT = Number(env.PORT) || 3000;
 const DATA_DIR = path.resolve(env.DATA_DIR || './data');
-const TOKEN = env.CMDLP_TOKEN || '';
 const PUBLIC_URL = (env.PUBLIC_URL || '').replace(/\/+$/, '');
 const MAX_AGE_HOURS = Number(env.MAX_AGE_HOURS) || 24;
 const SWEEP_MINUTES = Number(env.SWEEP_MINUTES) || 15;
 
-if (TOKEN.length < 16) {
-  console.error('CMDLP_TOKEN is missing or shorter than 16 characters. Make one with: openssl rand -base64 32');
-  process.exit(1);
-}
-
 const log = (...a) => console.log(new Date().toISOString(), ...a);
+
+// The admin page's sign-in. Without both, the admin page says it isn't
+// set up; the API works the same either way.
+const canopy = env.CANOPY_ACCOUNT_URL && env.CANOPY_ACCOUNT_KEY
+  ? createCanopyAccount({ url: env.CANOPY_ACCOUNT_URL, key: env.CANOPY_ACCOUNT_KEY })
+  : null;
+
+const tokens = new Tokens({ dataDir: DATA_DIR });
+
+// What audio URLs are signed with (below): 32 random bytes, made on the
+// first start and kept on the volume, so audioUrls survive a restart.
+// Nothing to do with the API tokens, so regenerating one doesn't break a
+// queue in progress.
+function audioKey() {
+  const p = path.join(DATA_DIR, 'audio-key');
+  try {
+    return fs.readFileSync(p);
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const key = crypto.randomBytes(32);
+    fs.writeFileSync(p, key, { mode: 0o600 });
+    return key;
+  }
+}
+const AUDIO_KEY = audioKey();
 
 const ytdlp = new YtDlp({
   dataDir: DATA_DIR,
@@ -45,21 +70,22 @@ function sha(s) {
   return crypto.createHash('sha256').update(s).digest();
 }
 
+// An API token from the admin page (lib/tokens.js).
 function bearerOk(req) {
   const m = /^Bearer (.+)$/.exec(req.get('authorization') || '');
-  return !!m && crypto.timingSafeEqual(sha(m[1]), sha(TOKEN));
+  return !!m && !!tokens.verify(m[1]);
 }
 
 // Sonos fetches a URL with no way to add a header, so an audio URL carries
-// its own key: an HMAC of the track id under the token. It opens that one
-// file and nothing else, and stops working if the token changes.
+// its own key: an HMAC of the track id under AUDIO_KEY. It opens that one
+// file and nothing else.
 function audioSig(id) {
-  return crypto.createHmac('sha256', TOKEN).update(`audio:${id}`).digest('base64url').slice(0, 32);
+  return crypto.createHmac('sha256', AUDIO_KEY).update(`audio:${id}`).digest('base64url').slice(0, 32);
 }
 
 function requireToken(req, res, next) {
   if (bearerOk(req)) return next();
-  next(new HttpError(401, 'unauthorized', 'Send Authorization: Bearer <CMDLP_TOKEN>.'));
+  next(new HttpError(401, 'unauthorized', 'Send Authorization: Bearer <token>, with a token from the admin page.'));
 }
 
 // ---- answers ----
@@ -93,10 +119,24 @@ function trackJson(req, t) {
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', true); // Coolify's proxy says who asked and over what
+// No framing (a page in someone else's frame is how a click gets stolen),
+// no MIME sniffing, and no full URLs in Referer.
 app.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'same-origin');
   next();
 });
+
+app.get('/', (req, res) => {
+  res.send(pages.home());
+});
+
+app.get('/canopy-logo.png', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'canopy-logo.png'), { maxAge: '1d' });
+});
+
+app.use(adminRouter({ tokens, canopy, adminEmail: env.ADMIN_EMAIL }));
 
 app.get('/health', async (req, res) => {
   res.set('Cache-Control', 'no-store').json({
@@ -120,7 +160,7 @@ app.get('/audio/:file', (req, res, next) => {
   if (!ID_RE.test(id)) return next(new HttpError(404, 'not_found', 'No such track.'));
   const sig = typeof req.query.sig === 'string' ? req.query.sig : '';
   const sigOk = sig.length > 0 && crypto.timingSafeEqual(sha(sig), sha(audioSig(id)));
-  if (!sigOk && !bearerOk(req)) return next(new HttpError(401, 'unauthorized', 'Send the audioUrl as given, or Authorization: Bearer <CMDLP_TOKEN>.'));
+  if (!sigOk && !bearerOk(req)) return next(new HttpError(401, 'unauthorized', 'Send the audioUrl as given, or Authorization: Bearer <token>.'));
   const t = tracks.get(id);
   if (!t) return next(new HttpError(404, 'not_found', 'No such track.'));
   if (t.status === 'failed') return next(new HttpError(410, 'failed', `The download failed: ${t.error}`));
@@ -190,6 +230,10 @@ async function start() {
   } catch {
     log('deno is not installed: YouTube links will fail');
   }
+  await tokens.init();
+  if (!tokens.tokens.length) log('no API tokens yet: make one at /admin');
+  if (!canopy) log('CANOPY_ACCOUNT_URL and CANOPY_ACCOUNT_KEY are not set: nobody can sign in to /admin');
+  else if (!env.ADMIN_EMAIL) log('ADMIN_EMAIL is not set: nobody can get into /admin');
   await ytdlp.init();
   await tracks.init();
   setInterval(() => tracks.sweep().catch((e) => log('sweep failed:', e.message)), SWEEP_MINUTES * 60_000).unref();

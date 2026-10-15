@@ -1,0 +1,123 @@
+// The admin page: list, make, regenerate, and revoke API tokens, through
+// /admin/api/tokens (lib/admin.js). Inlined into the page by lib/pages.js.
+(function () {
+  var tokens = JSON.parse(document.getElementById('pageData').textContent).tokens;
+  var list = document.getElementById('tokens');
+  var empty = document.getElementById('empty');
+  var error = document.getElementById('error');
+  var reveal = document.getElementById('reveal');
+
+  function when(iso) {
+    if (!iso) return null;
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function render() {
+    list.textContent = '';
+    empty.classList.toggle('hidden', tokens.length > 0);
+    list.classList.toggle('hidden', tokens.length === 0);
+    tokens.forEach(function (t) {
+      var li = el('li');
+      var what = el('div', 'what');
+      what.appendChild(el('div', 'label', t.label));
+      var meta = el('div', 'meta');
+      meta.appendChild(el('span', 'hint', 'cmdlp_…' + t.hint));
+      var made = t.regeneratedAt ? 'regenerated ' + when(t.regeneratedAt) : 'made ' + when(t.createdAt);
+      var used = t.lastUsedAt ? 'last used ' + when(t.lastUsedAt) : 'never used';
+      meta.appendChild(document.createTextNode(' · ' + made + ' · ' + used));
+      what.appendChild(meta);
+      li.appendChild(what);
+      var actions = el('div', 'actions');
+      var regen = el('button', 'secondary', 'Regenerate');
+      regen.type = 'button';
+      regen.onclick = function () {
+        if (!confirm('Regenerate "' + t.label + '"? Its current token stops working now, and the hub will need the new one.')) return;
+        call('POST', '/admin/api/tokens/' + t.id + '/regenerate').then(function (r) {
+          replace(r.record);
+          show('New token for ' + r.record.label, r.token);
+        }, shown);
+      };
+      var revoke = el('button', 'danger', 'Revoke');
+      revoke.type = 'button';
+      revoke.onclick = function () {
+        if (!confirm('Revoke "' + t.label + '"? It stops working now.')) return;
+        call('DELETE', '/admin/api/tokens/' + t.id).then(function () {
+          tokens = tokens.filter(function (x) { return x.id !== t.id; });
+          render();
+        }, shown);
+      };
+      actions.appendChild(regen);
+      actions.appendChild(revoke);
+      li.appendChild(actions);
+      list.appendChild(li);
+    });
+  }
+
+  function replace(record) {
+    tokens = tokens.map(function (x) { return x.id === record.id ? record : x; });
+    render();
+  }
+
+  function show(title, token) {
+    document.getElementById('revealTitle').textContent = title;
+    document.getElementById('revealToken').textContent = token;
+    document.getElementById('copy').textContent = 'Copy';
+    reveal.classList.remove('hidden');
+    reveal.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // A failed call's error is already on the page.
+  function shown() {}
+
+  function call(method, url, body) {
+    error.textContent = '';
+    return fetch(url, {
+      method: method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'same-origin'
+    }).then(function (r) {
+      if (r.status === 204) return null;
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error || 'Something went wrong.');
+        return j;
+      });
+    }).catch(function (e) {
+      error.textContent = e.message;
+      throw e;
+    });
+  }
+
+  document.getElementById('newToken').onsubmit = function (ev) {
+    ev.preventDefault();
+    var input = document.getElementById('label');
+    call('POST', '/admin/api/tokens', { label: input.value }).then(function (r) {
+      tokens.push(r.record);
+      input.value = '';
+      render();
+      show('Token for ' + r.record.label, r.token);
+    }, shown);
+  };
+
+  document.getElementById('copy').onclick = function () {
+    var btn = this;
+    navigator.clipboard.writeText(document.getElementById('revealToken').textContent).then(function () {
+      btn.textContent = 'Copied';
+    });
+  };
+
+  // Done: the token goes from the page for good.
+  document.getElementById('done').onclick = function () {
+    document.getElementById('revealToken').textContent = '';
+    reveal.classList.add('hidden');
+  };
+
+  render();
+})();

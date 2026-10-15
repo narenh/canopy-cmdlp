@@ -1,0 +1,171 @@
+/* The homepage and the admin page. Inlined into each page by lib/pages.js,
+   as the other Canopy sites do (Cloudflare can serve a stale .css during a
+   deploy).
+
+   The first half is canopy-account-service's public/account.css, copied:
+   the same tokens, mesh, and glass, so the sites look like one place.
+   Keep the tokens in step with that file; the contrast checks are there.
+   The second half is what cmdlp needs on top, built from those tokens. */
+:root{
+  --bg:#03120c;
+  --on-bg:#ffffff;
+  --card:rgba(3,32,11,0.30);
+  --card-solid:#0a4a12;
+  --glass-edge:rgba(255,255,255,0.28);
+  --line:rgba(255,255,255,0.22);
+  --field:rgba(0,0,0,0.30);
+  --field-line:rgba(255,255,255,0.55);
+  --secondary:rgba(255,255,255,0.10);
+  --text:#ffffff;
+  --muted:#e2ece4;
+  --placeholder:#c9d8cd;
+  --accent:#2ec44f;
+  --on-accent:#03190a;
+  --accent-text:#b6f5c3;
+  --danger:#ffd2ca;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;}
+html{background:var(--bg);}
+body{
+  margin:0;
+  color:var(--text);
+  font-family:-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  padding:12px 16px 48px;
+  padding-top:max(12px, env(safe-area-inset-top));
+  padding-left:max(16px, env(safe-area-inset-left));
+  padding-right:max(16px, env(safe-area-inset-right));
+}
+.mesh-bg{
+  --mesh-base:#03120c;
+  --mesh-1:#0f4a33;
+  --mesh-2:#0a3b2e;
+  --mesh-3:#145c3e;
+  --mesh-4:#072b1f;
+  --mesh-5:#0c3a28;
+  --mesh-grain:0.07;
+  position:relative;
+  min-height:100vh;
+  min-height:100svh;
+  background-color:var(--mesh-base);
+  isolation:isolate;
+}
+.mesh-bg::before, .mesh-bg::after{
+  content:""; position:fixed; top:0; left:0; right:0; z-index:-2; pointer-events:none;
+  height:100vh; height:100lvh;
+}
+.mesh-bg::before{
+  background-color:var(--mesh-base);
+  background-image:
+    radial-gradient(at 12% 18%, var(--mesh-1) 0, transparent 50%),
+    radial-gradient(at 88% 8%,  var(--mesh-2) 0, transparent 45%),
+    radial-gradient(at 72% 78%, var(--mesh-3) 0, transparent 50%),
+    radial-gradient(at 18% 88%, var(--mesh-4) 0, transparent 55%),
+    radial-gradient(at 50% 45%, var(--mesh-5) 0, transparent 60%);
+}
+.mesh-bg::after{
+  z-index:-1; opacity:var(--mesh-grain); mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@media (max-width: 699px){
+  .mesh-bg::before{background-image:none;}
+  .mesh-bg::after{display:none;}
+}
+.hidden{display:none !important;}
+.card{
+  width:100%;
+  background:var(--card);
+  border:1px solid var(--glass-edge);
+  border-radius:14px;
+  padding:22px 20px;
+  -webkit-backdrop-filter:blur(18px) saturate(150%);
+  backdrop-filter:blur(18px) saturate(150%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.25), 0 10px 30px rgba(0,0,0,0.18);
+}
+.site-logo{display:block;max-height:56px;max-width:100%;width:auto;height:auto;margin:0 auto 14px;}
+h1{font-size:20px;margin:0 0 6px;}
+h2{font-size:17px;margin:0 0 10px;}
+p{margin:0 0 14px;color:var(--muted);font-size:15px;line-height:1.45;}
+p:last-child{margin-bottom:0;}
+a{color:var(--accent-text);}
+input[type="text"]{
+  width:100%;
+  background:var(--field);
+  color:var(--text);
+  border:1px solid var(--field-line);
+  border-radius:10px;
+  padding:12px 14px;
+  font-size:16px;
+}
+input::placeholder{color:var(--placeholder);opacity:1;}
+input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+button, .button{
+  display:inline-block;
+  background:var(--accent);
+  color:var(--on-accent);
+  border:none;
+  border-radius:12px;
+  padding:12px 16px;
+  font-size:15px;
+  font-weight:700;
+  cursor:pointer;
+  font-family:inherit;
+  text-decoration:none;
+  text-align:center;
+}
+button:disabled{opacity:.5;cursor:not-allowed;}
+button:focus-visible, .button:focus-visible{outline:2px solid var(--text);outline-offset:2px;}
+button.secondary, .button.secondary{background:var(--secondary);color:var(--text);border:1px solid var(--field-line);}
+button.danger{background:var(--card);color:var(--danger);border:1px solid rgba(247,165,151,.5);}
+.error{color:var(--danger);font-size:13px;min-height:18px;margin:8px 0 0;}
+
+/* ---- cmdlp ---- */
+
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px;}
+/* The logo on the left, and the settings gear (or who's signed in) on
+   the right. */
+.top{display:flex;align-items:center;gap:12px;min-height:44px;margin-bottom:6px;}
+.top .site-logo{max-height:30px;margin:0;}
+.top .end{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:13px;color:var(--on-bg);}
+.top .end a{color:var(--on-bg);font-weight:600;}
+.gear{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:44px;height:44px;border-radius:12px;
+  background:var(--secondary);border:1px solid var(--field-line);color:var(--on-bg);
+}
+.gear svg{width:22px;height:22px;display:block;}
+.gear:hover{border-color:var(--accent);}
+.gear:focus-visible{outline:2px solid var(--text);outline-offset:2px;}
+.sites{color:var(--text);font-weight:600;}
+
+/* A page that's only a message (not allowed, setup missing). */
+.message{max-width:420px;margin:12vh auto 0;text-align:center;}
+.message .actions{display:flex;flex-direction:column;gap:10px;margin-top:18px;}
+
+/* The admin page's tokens. */
+.new-token{display:flex;gap:10px;}
+.new-token input{flex:1;min-width:0;}
+.new-token button{flex:0 0 auto;}
+.tokens{list-style:none;margin:0;padding:0;}
+.tokens li{display:flex;align-items:center;gap:12px;padding:14px 0;border-top:1px solid var(--line);}
+.tokens li:first-child{border-top:none;padding-top:4px;}
+.tokens .what{flex:1;min-width:0;}
+.tokens .label{font-weight:700;font-size:15px;overflow-wrap:anywhere;}
+.tokens .meta{color:var(--muted);font-size:13px;margin-top:3px;}
+.tokens .hint{font-family:ui-monospace, SFMono-Regular, Menlo, monospace;}
+.tokens .actions{display:flex;gap:8px;flex:0 0 auto;}
+.tokens .actions button{padding:8px 12px;font-size:13px;}
+.empty{color:var(--muted);font-size:15px;}
+/* A token just made: shown once. */
+.reveal{border-color:var(--accent);}
+.reveal code{
+  display:block;margin:4px 0 12px;padding:12px;border-radius:10px;
+  background:var(--field);border:1px solid var(--field-line);
+  font-family:ui-monospace, SFMono-Regular, Menlo, monospace;font-size:14px;
+  overflow-wrap:anywhere;user-select:all;
+}
+.reveal .row{display:flex;gap:10px;}
+@media (max-width: 480px){
+  .tokens li{flex-direction:column;align-items:stretch;}
+  .new-token{flex-direction:column;}
+}

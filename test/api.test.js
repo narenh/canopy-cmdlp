@@ -3,48 +3,10 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { spawn, execFileSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-
-const FAKE = path.join(__dirname, 'fake-yt-dlp.js');
-const TOKEN = 'test-token-0123456789abcdef';
-const auth = { Authorization: `Bearer ${TOKEN}` };
-
-const servers = [];
-
-async function startServer(extraEnv = {}, { setup } = {}) {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cmdlp-test-'));
-  if (setup) setup(dataDir);
-  const port = 40000 + Math.floor(Math.random() * 20000);
-  const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: {
-      ...process.env,
-      CMDLP_TOKEN: TOKEN,
-      PORT: String(port),
-      DATA_DIR: dataDir,
-      YTDLP_STABLE: FAKE,
-      YTDLP_AUTO_UPDATE: '0',
-      PUBLIC_URL: 'https://cmdlp.example',
-      ...extraEnv,
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let output = '';
-  child.stdout.on('data', (d) => { output += d; });
-  child.stderr.on('data', (d) => { output += d; });
-  const base = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 100; i++) {
-    try {
-      if ((await fetch(`${base}/health`)).ok) break;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  const s = { base, dataDir, child, output: () => output };
-  servers.push(s);
-  return s;
-}
+const { startServer, stopServers, auth } = require('./helpers');
 
 function post(s, body, headers = auth) {
   return fetch(`${s.base}/resolve`, {
@@ -72,12 +34,7 @@ let s;
 before(async () => {
   s = await startServer();
 });
-after(() => {
-  for (const x of servers) {
-    x.child.kill('SIGKILL');
-    fs.rmSync(x.dataDir, { recursive: true, force: true });
-  }
-});
+after(stopServers);
 
 test('/health needs no token and says the yt-dlp version', async () => {
   const h = await (await fetch(`${s.base}/health`)).json();

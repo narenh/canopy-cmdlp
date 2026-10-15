@@ -19,6 +19,10 @@ info:
     song pasted twice in one zone is one track, downloaded once. Audio is
     kept until its zone is deleted, or for 24 hours from when its link
     was resolved, whichever comes first.
+
+    **Tokens.** Each hub has its own API token, made on the admin page
+    (`/admin`) by the one admin, signed in with their Canopy Account. The
+    `/admin/api` endpoints below are that page's own; hubs never use them.
   license:
     name: MIT
     identifier: MIT
@@ -36,6 +40,8 @@ tags:
     description: A party's cache.
   - name: Health
     description: Whether it's up, and which yt-dlp it's running.
+  - name: Admin
+    description: The admin page's API tokens. Signed in with a Canopy Account, as the admin.
 security:
   - bearerAuth: []
 
@@ -268,15 +274,125 @@ paths:
                   downloading: { type: integer }
                   queued: { type: integer }
 
+  /admin/api/tokens:
+    get:
+      tags: [Admin]
+      operationId: listTokens
+      summary: The API tokens
+      security:
+        - canopySession: []
+      responses:
+        '200':
+          description: Every token, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items: { $ref: '#/components/schemas/ApiToken' }
+        '401': { $ref: '#/components/responses/AdminDenied' }
+        '403': { $ref: '#/components/responses/AdminDenied' }
+        '503': { $ref: '#/components/responses/AdminDenied' }
+    post:
+      tags: [Admin]
+      operationId: createToken
+      summary: Make a token
+      security:
+        - canopySession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label: { type: string, minLength: 1, maxLength: 60, example: Living Room iPad }
+      responses:
+        '201':
+          description: Made. `token` is shown this once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NewApiToken' }
+        '400':
+          description: '`bad_label`: empty, or longer than 60 characters.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/AdminDenied' }
+        '403': { $ref: '#/components/responses/AdminDenied' }
+        '503': { $ref: '#/components/responses/AdminDenied' }
+
+  /admin/api/tokens/{id}/regenerate:
+    post:
+      tags: [Admin]
+      operationId: regenerateToken
+      summary: Replace a token
+      description: A new token under the same label. The old one stops working at once.
+      security:
+        - canopySession: []
+      parameters:
+        - $ref: '#/components/parameters/TokenId'
+      responses:
+        '200':
+          description: The new token, shown this once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NewApiToken' }
+        '401': { $ref: '#/components/responses/AdminDenied' }
+        '403': { $ref: '#/components/responses/AdminDenied' }
+        '404':
+          description: '`not_found`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/AdminDenied' }
+
+  /admin/api/tokens/{id}:
+    delete:
+      tags: [Admin]
+      operationId: revokeToken
+      summary: Revoke a token
+      description: It stops working at once.
+      security:
+        - canopySession: []
+      parameters:
+        - $ref: '#/components/parameters/TokenId'
+      responses:
+        '204': { description: Revoked. }
+        '401': { $ref: '#/components/responses/AdminDenied' }
+        '403': { $ref: '#/components/responses/AdminDenied' }
+        '404':
+          description: '`not_found`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/AdminDenied' }
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       description: |
-        `Authorization: Bearer <CMDLP_TOKEN>`, the one token the Canopy
-        Music hubs share. Everything but `/health` and a signed
-        `audioUrl` needs it.
+        `Authorization: Bearer cmdlp_<43 characters>`: the hub's own API
+        token, from the admin page. Everything but `/health`, a signed
+        `audioUrl`, and `/admin/api` needs one. Regenerating or revoking a
+        token on the admin page stops it working at once.
+    canopySession:
+      type: apiKey
+      in: cookie
+      name: canopy_session
+      description: |
+        For `/admin/api` only: the admin page's own requests, signed in
+        with a Canopy Account (the cookie is set by `account.canopysf.com`
+        for all of `canopysf.com`). The account must have a confirmed
+        email equal to `ADMIN_EMAIL`, compared ignoring case. Changes
+        (POST, DELETE) must carry an `Origin` header for a Canopy page, or
+        get 403 `bad_origin`.
 
   parameters:
     TrackId:
@@ -287,7 +403,24 @@ components:
       schema: { type: string, pattern: '^[A-Za-z0-9_-]{22}$' }
       example: M9xQFZLlR5L-VkfG3YQQLp
 
+    TokenId:
+      name: id
+      in: path
+      required: true
+      description: The token's id (not the token itself).
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{12}$' }
+
   responses:
+    AdminDenied:
+      description: |
+        Not the admin. 401 `signed_out` (with `signIn`, a URL to sign in
+        and come back); 403 `not_admin`, `email_unverified`,
+        `email_not_granted` (the "cmdlp" site isn't granted the email
+        field), `admin_email_not_set`, or `bad_origin`; 503 `not_set_up`
+        or `accounts_unreachable`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     Unauthorized:
       description: '`unauthorized`: no bearer token, or the wrong one.'
       content:
@@ -329,6 +462,28 @@ components:
         codec: { type: string, description: 'What the site sent (`aac`, `opus`, `mp3`...). Only when `ready`.' }
         transcoded: { type: boolean, description: "Whether it was re-encoded to AAC (false: copied as it was). Only when `ready`." }
         error: { type: string, description: Why the download failed. Only when `failed`. }
+
+    ApiToken:
+      type: object
+      description: A token as the admin page lists it. Never the token itself, which isn't kept.
+      required: [id, label, hint, createdAt, regeneratedAt, lastUsedAt]
+      properties:
+        id: { type: string, pattern: '^[A-Za-z0-9_-]{12}$' }
+        label: { type: string, maxLength: 60, example: Living Room iPad }
+        hint: { type: string, description: "The token's last four characters, to tell them apart.", example: x9Qa }
+        createdAt: { type: string, format: date-time }
+        regeneratedAt: { type: [string, 'null'], format: date-time }
+        lastUsedAt: { type: [string, 'null'], format: date-time, description: Up to a minute behind. }
+
+    NewApiToken:
+      type: object
+      required: [token, record]
+      properties:
+        token:
+          type: string
+          pattern: '^cmdlp_[A-Za-z0-9_-]{43}$'
+          description: The token itself. This is the only time it's ever shown.
+        record: { $ref: '#/components/schemas/ApiToken' }
 
     Error:
       type: object
