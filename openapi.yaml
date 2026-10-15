@@ -58,8 +58,16 @@ paths:
         `GET /tracks/{id}` until `status` is `ready`.
 
         Resolving a link that's already a track in the zone answers with
-        that track, whatever its status, without downloading it again. A
+        that track, `pending` or `ready`, without downloading it again. A
         `failed` one is tried again.
+
+        A link the zone has seen before answers at once, with no lookup:
+        any form of a YouTube video already in the zone (`youtu.be/<id>`,
+        `watch?v=<id>`, `music.youtube.com`, `/shorts/`, `/live/`, or
+        `/embed/`), or any link that led to one of its tracks before,
+        compared without its tracking parameters (`si`, `is`, `utm_*`, and
+        the like), fragment, and trailing slash. Each zone has its own; the
+        same song in another zone is looked up again.
 
         A link to a video in a playlist (`watch?v=...&list=...`) is the
         video. A link that's only a playlist, an album, or a set is a 422

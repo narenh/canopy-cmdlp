@@ -47,8 +47,9 @@ Errors are `{"error": "<a sentence>", "reason": "<snake_case>"}`, as in canopy-e
 canopy-account-service.
 
 The same song pasted twice in a zone is one track, downloaded once, whichever form the link
-takes (`youtu.be/...`, `music.youtube.com/...`, or a video opened from a playlist). A link
-that's only a playlist, an album, or a set is turned down: send one track.
+takes (`youtu.be/...`, `music.youtube.com/...`, or a video opened from a playlist). Pasted
+again, a link the zone already has answers at once (see "Looking a link up"). A link that's
+only a playlist, an album, or a set is turned down: send one track.
 
 ## How it works
 
@@ -73,7 +74,7 @@ audio-key                        what audioUrls are signed with
 bin/yt-dlp                       the copy that runs, updated to nightly
 bin/yt-dlp.prev                  the version before the last update
 cache/                           yt-dlp's cache (YouTube's player code) and Deno's
-zones/<zone>/<id>.track.json     the track
+zones/<zone>/<id>.track.json     the track, and the links that led to it
 zones/<zone>/<id>.m4a            its audio
 ```
 
@@ -82,8 +83,30 @@ start again.
 
 ### Looking a link up
 
-`POST /resolve` runs `yt-dlp -J` on the link, which answers with everything yt-dlp knows
-about it. The title is the song's name where the site has one (YouTube Music does), or else
+First, `POST /resolve` checks whether the link is already a track in the zone, pending or
+ready. If it is, that track is the answer at once, with no yt-dlp at all:
+
+- **A YouTube link** is known by its video id, whatever its form: `youtu.be/<id>`,
+  `watch?v=<id>` (on `www.`, `m.`, or `music.youtube.com`), `/shorts/<id>`, `/live/<id>`, or
+  `/embed/<id>`. A track's id is a hash of its zone, yt-dlp's extractor (`Youtube` for every
+  YouTube video), and the video id, so the id can be worked out from the link alone. Once a
+  video is in the zone, any link to it is instant, even a form not pasted before.
+- **Any other link** is looked up among the links that led to the zone's tracks before. Each
+  track keeps those (`aliases`, in its `.track.json`): the link it was first resolved from,
+  and every other link yt-dlp later said was the same track (a SoundCloud short link, say).
+  Links are compared without what only says who shared them: the host's case, the
+  `#fragment`, a trailing slash, and tracking parameters (`si`, `is`, `feature`, `pp`, `t`,
+  `utm_*`, `fbclid`, `gclid`, `igshid`, and the like) don't count. What says which track it
+  is, like YouTube's `v`, does.
+
+A `failed` track is never the answer: it's looked up and downloaded again. The links are kept
+in memory too, read back from the `.track.json` files on start, so checking them never reads a
+file. They're per zone, like the tracks, and go with them (the zone's deletion or the sweep).
+The same song in another zone is looked up and downloaded again: zones share nothing.
+
+Otherwise, `POST /resolve` runs `yt-dlp -J` on the link, which answers with everything
+yt-dlp knows about it. If that's a track the zone already has, the link is added to its
+aliases and the track is the answer, as above. The title is the song's name where the site has one (YouTube Music does), or else
 the upload's title. The artist is the artist where the site says, or else whoever uploaded
 it (for a Mixcloud set, always the uploader: the DJ). The artwork is the largest JPEG the
 site has that really exists (for archive.org, the item's own image). yt-dlp lists YouTube's
@@ -104,7 +127,7 @@ the width, a little above center, on a gradient from #FF7700 to #FF3000. Only th
 served.
 The other sites have no fallback image yet.
 
-A lookup takes two or three seconds. The first YouTube one after a restart or an update
+A lookup with yt-dlp takes two or three seconds. The first YouTube one after a restart or an update
 takes 20 or so: yt-dlp fetches YouTube's player code and solves its challenge with Deno, then
 keeps the answer in `cache/`.
 
@@ -230,7 +253,9 @@ npm test
 ```
 
 The tests run a real server against a fake yt-dlp (`test/fake-yt-dlp.js`) and a fake Canopy
-Accounts, so they need ffmpeg but not the network.
+Accounts, so they need ffmpeg but not the network. `test/aliases.test.js` drives the tracks
+directly, with the same fake and a stub for the artwork checks, since its YouTube links would
+otherwise check artwork on `i.ytimg.com`.
 
 ### In Coolify
 
