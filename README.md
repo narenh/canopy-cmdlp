@@ -182,7 +182,7 @@ Then the download starts, reusing what `-J` found, so YouTube is only asked once
 
 While a track is `pending`, `GET /tracks/{id}` says where it's up to. `stage` is `queued`
 (waiting for one of the two download slots), `downloading`, or `converting` (making the
-`.m4a`, a few seconds). While it downloads, `progress` has the bytes so far, the speed, the
+`.m4a`, a few seconds, longer when its loudness is changed). While it downloads, `progress` has the bytes so far, the speed, the
 time left when yt-dlp can tell, and `percent`.
 
 It comes from yt-dlp itself: it's run with `--progress --newline --progress-template`, which
@@ -208,6 +208,23 @@ from YouTube, SoundCloud, and Mixcloud. Anything else (MP3 from Bandcamp, Opus, 
 from archive.org) is re-encoded to AAC at 256k, because Sonos won't play Opus or Vorbis in an
 MP4. Either way the file's index goes at the front (`+faststart`), so playback starts before
 the whole file has arrived. The track says which happened (`codec`, `transcoded`).
+
+### Loudness
+
+A download is usually the track's master, and often far louder than the songs around it at a
+party: YouTube turns loud videos down in its own player, not in the file. So before the
+`.m4a` is made, ffmpeg measures the download's loudness and true peak (`ebur128`), and a track
+more than 1 LU from the target is brought to it: one gain for the whole track (`volume`), so its
+dynamics stay as they were, plus a limiter (`alimiter`) only when that gain would push its peaks
+past −1.5 dBTP, so a quiet track turned up doesn't clip. That means re-encoding to 256k AAC,
+which adds a little time (about 4 s for a 4-minute song on an M-series Mac; longer for an
+hour-long mix). A track already within 1 LU is left as it is, and AAC is still copied.
+`loudnorm` would do the same in two passes but works at 192 kHz, which took three times as long.
+
+The target is −16 LUFS, about where Apple Music plays with Sound Check, set by
+`LOUDNESS_TARGET` (`off` leaves every track as it came). It's done to the file rather than by
+the app because Sonos plays the file as it is. The track says what was measured and whether it
+was changed (`loudness`). Tracks that were ready before this stay as they were.
 
 ### Keeping yt-dlp working
 

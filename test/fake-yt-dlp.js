@@ -151,6 +151,8 @@ say('[cmdlp] finished 6000 6000 NA NA NA NA NA');
 execFileSync('ffmpeg', [
   '-nostdin', '-v', 'error', '-y',
   '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2',
+  // About -16 LUFS, the loudness target, so an AAC track is copied as it is.
+  '-af', 'volume=1.94',
   '-c:a', opus ? 'libopus' : 'aac',
   out,
 ]);

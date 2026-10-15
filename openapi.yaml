@@ -591,6 +591,13 @@ components:
         size: { type: integer, description: Bytes. Only when `ready`. }
         codec: { type: string, description: 'What the site sent (`aac`, `opus`, `mp3`...). Only when `ready`.' }
         transcoded: { type: boolean, description: "Whether it was re-encoded to AAC (false: copied as it was). Only when `ready`." }
+        loudness:
+          type: [object, 'null']
+          description: "Its loudness, from ffmpeg's measure of the download. null when the target is off, it couldn't be measured, or it was ready before this was added. Only when `ready`."
+          properties:
+            measured: { type: number, description: The download's integrated loudness in LUFS. }
+            target: { type: number, description: The loudness tracks are brought to (`LOUDNESS_TARGET`). }
+            adjusted: { type: boolean, description: "Whether it was changed to the target (false: already within 1 LU of it)." }
         error: { type: string, description: Why the download failed. Only when `failed`. }
 
     Progress:

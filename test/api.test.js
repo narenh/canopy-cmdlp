@@ -94,6 +94,9 @@ test('a link resolves, downloads, and plays with Range', async () => {
   const ready = await waitFor(s, t.id, 'ready');
   assert.equal(ready.codec, 'aac');
   assert.equal(ready.transcoded, false);
+  // Measured, and already near the target (fake-yt-dlp.js makes it so).
+  assert.equal(ready.loudness.target, -16);
+  assert.equal(ready.loudness.adjusted, false);
 
   const full = await fetch(local(s, ready.audioUrl));
   assert.equal(full.status, 200);

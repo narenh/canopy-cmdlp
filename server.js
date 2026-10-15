@@ -118,7 +118,7 @@ function trackJson(req, t) {
     createdAt: t.createdAt,
   };
   if (t.status === 'pending') Object.assign(out, { stage: t.stage || 'queued', progress: t.progress || null });
-  if (t.status === 'ready') Object.assign(out, { readyAt: t.readyAt, size: t.size, codec: t.codec, transcoded: t.transcoded });
+  if (t.status === 'ready') Object.assign(out, { readyAt: t.readyAt, size: t.size, codec: t.codec, transcoded: t.transcoded, loudness: t.loudness || null });
   if (t.status === 'failed') out.error = t.error;
   return out;
 }
